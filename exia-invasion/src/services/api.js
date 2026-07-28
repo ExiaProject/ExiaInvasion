@@ -63,15 +63,111 @@ const buildHeader = () => ({
   Accept: "application/json",
 });
 
-const postJson = async (url, bodyObj) => {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: buildHeader(),
-    body: JSON.stringify(bodyObj),
-    credentials: "include", // 自动携带Cookie
-  });
+const emitDiagnostic = (onDiagnostic, message) => {
+  if (typeof onDiagnostic !== "function") return;
+  try {
+    onDiagnostic(message);
+  } catch {
+    // 诊断日志不能影响请求和验证结果
+  }
+};
+
+const getEndpointName = (url) => {
+  const path = String(url || "").split("?")[0];
+  return path.split("/").filter(Boolean).pop() || "unknown-endpoint";
+};
+
+const sanitizeDiagnosticText = (value, maxLength = 160) => {
+  const text = String(value ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/((?:token|cookie|password|authorization)\s*[:=]\s*)[^\s,;]+/gi, "$1[REDACTED]")
+    .trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+};
+
+const describeDiagnosticValue = (value) => {
+  if (value === undefined) return "missing";
+  if (value === null) return "null";
+  if (value === "") return "empty-string";
+  if (typeof value === "string") return `string(${sanitizeDiagnosticText(value, 40)})`;
+  if (typeof value === "number") return `number(${value})`;
+  if (typeof value === "boolean") return `boolean(${value})`;
+  if (Array.isArray(value)) return `array(length=${value.length})`;
+  if (typeof value === "object") return "object";
+  return typeof value;
+};
+
+const summarizeApiResponse = (payload) => {
+  if (!payload || typeof payload !== "object") {
+    return `payload=${describeDiagnosticValue(payload)}`;
+  }
+
+  const businessCode = payload.code ?? payload.retcode ?? payload.ret_code ?? "missing";
+  const businessMessage = payload.message ?? payload.msg ?? payload.error?.message ?? "";
+  const data = payload.data;
+  const dataKeys = data && typeof data === "object" && !Array.isArray(data)
+    ? Object.keys(data).slice(0, 20)
+    : [];
+  const areaId = data && typeof data === "object" ? data.area_id : undefined;
+
+  return [
+    `businessCode=${sanitizeDiagnosticText(businessCode, 40) || "empty"}`,
+    `businessMessage=${businessMessage ? sanitizeDiagnosticText(businessMessage) : "empty"}`,
+    `data=${describeDiagnosticValue(data)}`,
+    `dataKeys=[${dataKeys.join(",")}]`,
+    `area_id=${describeDiagnosticValue(areaId)}`,
+  ].join("; ");
+};
+
+const requestJson = async (url, options, onDiagnostic) => {
+  const endpoint = getEndpointName(url);
+  const startedAt = Date.now();
+  emitDiagnostic(onDiagnostic, `${endpoint} 请求开始`);
+
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (error) {
+    emitDiagnostic(
+      onDiagnostic,
+      `${endpoint} 网络异常: ${sanitizeDiagnosticText(error?.message || error)}; elapsed=${Date.now() - startedAt}ms`
+    );
+    throw error;
+  }
+
+  emitDiagnostic(
+    onDiagnostic,
+    `${endpoint} HTTP响应: status=${res.status}; ok=${res.ok}; statusText=${sanitizeDiagnosticText(res.statusText) || "empty"}; elapsed=${Date.now() - startedAt}ms`
+  );
+
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
+
+  let payload;
+  try {
+    payload = await res.json();
+  } catch (error) {
+    emitDiagnostic(
+      onDiagnostic,
+      `${endpoint} JSON解析失败: ${sanitizeDiagnosticText(error?.message || error)}`
+    );
+    throw error;
+  }
+
+  emitDiagnostic(onDiagnostic, `${endpoint} 响应摘要: ${summarizeApiResponse(payload)}`);
+  return payload;
+};
+
+const postJson = (url, bodyObj, onDiagnostic) => {
+  return requestJson(
+    url,
+    {
+      method: "POST",
+      headers: buildHeader(),
+      body: JSON.stringify(bodyObj),
+      credentials: "include", // 自动携带Cookie
+    },
+    onDiagnostic
+  );
 };
 
 /**
@@ -82,22 +178,25 @@ const postJson = async (url, bodyObj) => {
  * @param {string} accountId - 账号 game_uid
  * @returns {Promise<object>} - 响应 JSON
  */
-const postJsonWithAccount = async (url, bodyObj, accountId) => {
+const postJsonWithAccount = async (url, bodyObj, accountId, onDiagnostic) => {
   if (!accountId) {
+    emitDiagnostic(onDiagnostic, `${getEndpointName(url)} 请求前检查失败: 缺少 game_uid`);
     throw new Error("缺少 game_uid，无法并发请求");
   }
   // 在 URL 后附加账号标识参数
   const separator = url.includes("?") ? "&" : "?";
   const urlWithId = `${url}${separator}_acct_id=${accountId}`;
   
-  const res = await fetch(urlWithId, {
-    method: "POST",
-    headers: buildHeader(),
-    body: JSON.stringify(bodyObj),
-    credentials: "omit", // 不携带浏览器 Cookie，由拦截器注入
-  });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
+  return requestJson(
+    urlWithId,
+    {
+      method: "POST",
+      headers: buildHeader(),
+      body: JSON.stringify(bodyObj),
+      credentials: "omit", // 不携带浏览器 Cookie，由拦截器注入
+    },
+    onDiagnostic
+  );
 };
 
 /* ========== 游戏API接口 ========== */
@@ -115,37 +214,388 @@ const getIntlOpenId = async () => {
   throw new Error("未找到 game_openid cookie");
 };
 
-// 获取最新昵称（优先 BasicInfo.nickname，回退旧 role_name）；不因空昵称判定 Cookie 失效
-export const getRoleName = async () => {
-  const oldPromise = postJson(
-    "https://api.blablalink.com/api/ugc/direct/standalonesite/User/GetUserGamePlayerInfo",
-    {}
-  ).catch(err => ({ error: err }));
+const USER_GAME_PLAYER_INFO_URL =
+  "https://api.blablalink.com/api/ugc/direct/standalonesite/User/GetUserGamePlayerInfo";
+const USER_CHECK_LOGIN_URL =
+  "https://api.blablalink.com/api/user/CheckLogin";
+const USER_INFO_NEW_URL =
+  "https://api.blablalink.com/api/ugc/proxy/standalonesite/User/GetUserInfoNew";
+const USER_PRIVACY_SETTING_URL =
+  "https://api.blablalink.com/api/ugc/direct/standalonesite/User/GetUserPrivacySetting";
+const PLAYER_INFO_SYSTEM_ERROR_CODE = "1300015";
+const PLAYER_INFO_RETRY_DELAYS_MS = [1000, 2000];
 
-  const oldResp = await oldPromise;
+const getApiBusinessCode = (response) => {
+  return response?.code ?? response?.retcode ?? response?.ret_code;
+};
+
+const isApiResponseSuccessful = (response) => {
+  return String(getApiBusinessCode(response)) === "0";
+};
+
+const isPlayerInfoResponseSuccessful = (response) => {
+  return isApiResponseSuccessful(response) && Boolean(response?.data?.area_id);
+};
+
+const getCanonicalIntlOpenId = (response) => {
+  return String(
+    response?.data?.info?.intl_openid ??
+    response?.data?.intl_openid ??
+    ""
+  ).trim();
+};
+
+const summarizeIntlOpenIdRelation = (canonicalIntlOpenId, gameOpenId) => {
+  const canonicalText = String(canonicalIntlOpenId || "").trim();
+  const gameOpenIdText = String(gameOpenId || "").trim();
+  const segments = canonicalText ? canonicalText.split("-") : [];
+  const canonicalSuffix = segments.length > 1 ? segments.slice(1).join("-") : "";
+  const format = /^\d+-\d+$/.test(canonicalText)
+    ? "numeric-prefix-and-id"
+    : canonicalText.includes("-")
+      ? "hyphenated-other"
+      : canonicalText
+        ? "unprefixed-or-other"
+        : "missing";
+  const equality = canonicalText && gameOpenIdText
+    ? String(canonicalText === gameOpenIdText)
+    : "unavailable";
+  const suffixEquality = canonicalSuffix && gameOpenIdText
+    ? String(canonicalSuffix === gameOpenIdText)
+    : "unavailable";
+
+  return [
+    `canonicalIntlOpenId=${canonicalText ? "present" : "missing"}`,
+    `format=${format}`,
+    `segmentLengths=[${segments.map((segment) => segment.length).join(",")}]`,
+    `equalsGameOpenIdCookie=${equality}`,
+    `suffixEqualsGameOpenIdCookie=${suffixEquality}`,
+  ].join("; ");
+};
+
+/**
+ * 仅在 1300015 时执行有界恢复。
+ * 返回的成功响应可进入正式判定；所有标识日志均只输出结构和比较结果。
+ */
+const recoverPlayerInfoSystemError = async (onDiagnostic) => {
+  emitDiagnostic(
+    onDiagnostic,
+    `[恢复] 检测到 ${PLAYER_INFO_SYSTEM_ERROR_CODE}，开始有界重试: delays=[${PLAYER_INFO_RETRY_DELAYS_MS.join(",")}]ms`
+  );
+
+  for (let index = 0; index < PLAYER_INFO_RETRY_DELAYS_MS.length; index += 1) {
+    const attempt = index + 1;
+    const delayMs = PLAYER_INFO_RETRY_DELAYS_MS[index];
+    const label = `恢复重试${attempt}`;
+    emitDiagnostic(onDiagnostic, `[${label}] 等待 ${delayMs}ms`);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+    let retryResponse = null;
+    try {
+      retryResponse = await postJson(
+        USER_GAME_PLAYER_INFO_URL,
+        {},
+        (message) => emitDiagnostic(onDiagnostic, `[${label}] ${message}`)
+      );
+    } catch (error) {
+      emitDiagnostic(
+        onDiagnostic,
+        `[${label}] 请求异常: ${sanitizeDiagnosticText(error?.message || error)}`
+      );
+    }
+
+    const retryCode = getApiBusinessCode(retryResponse);
+    const retryAreaId = retryResponse?.data?.area_id;
+    const retrySucceeded = isPlayerInfoResponseSuccessful(retryResponse);
+    emitDiagnostic(
+      onDiagnostic,
+      `[${label}] 结果: businessCode=${describeDiagnosticValue(retryCode)}; area_id=${describeDiagnosticValue(retryAreaId)}; success=${retrySucceeded}`
+    );
+
+    if (retrySucceeded) {
+      emitDiagnostic(
+        onDiagnostic,
+        `[恢复结论] 第 ${attempt} 次重试成功，正式判定将采用本次响应`
+      );
+      return { response: retryResponse, source: `retry-${attempt}` };
+    }
+
+    if (
+      retryResponse &&
+      String(retryCode) !== PLAYER_INFO_SYSTEM_ERROR_CODE
+    ) {
+      emitDiagnostic(
+        onDiagnostic,
+        `[${label}] 业务码已变为 ${describeDiagnosticValue(retryCode)}，停止空请求重试`
+      );
+      break;
+    }
+  }
+
+  emitDiagnostic(
+    onDiagnostic,
+    "[恢复] 空请求重试未成功，开始玩家标识后备链路"
+  );
+
+  let gameOpenId = "";
+  try {
+    gameOpenId = await getIntlOpenId();
+    emitDiagnostic(
+      onDiagnostic,
+      `[后备1-game_openid参数] game_openid Cookie: ${gameOpenId ? "present" : "empty"}`
+    );
+  } catch (error) {
+    emitDiagnostic(
+      onDiagnostic,
+      `[后备1-game_openid参数] 无法读取 game_openid Cookie: ${sanitizeDiagnosticText(error?.message || error)}`
+    );
+  }
+
+  let gameOpenIdResponse = null;
+  if (gameOpenId) {
+    try {
+      gameOpenIdResponse = await postJson(
+        USER_GAME_PLAYER_INFO_URL,
+        { intl_openid: gameOpenId },
+        (message) => emitDiagnostic(onDiagnostic, `[后备1-game_openid参数] ${message}`)
+      );
+    } catch (error) {
+      emitDiagnostic(
+        onDiagnostic,
+        `[后备1-game_openid参数] 请求异常: ${sanitizeDiagnosticText(error?.message || error)}`
+      );
+    }
+  } else {
+    emitDiagnostic(
+      onDiagnostic,
+      "[后备1-game_openid参数] 跳过请求: game_openid Cookie 不存在"
+    );
+  }
+
+  const gameOpenIdCode = getApiBusinessCode(gameOpenIdResponse);
+  const gameOpenIdAreaId = gameOpenIdResponse?.data?.area_id;
+  const gameOpenIdSucceeded = isPlayerInfoResponseSuccessful(gameOpenIdResponse);
+  emitDiagnostic(
+    onDiagnostic,
+    `[后备1-game_openid参数] 结果: businessCode=${describeDiagnosticValue(gameOpenIdCode)}; area_id=${describeDiagnosticValue(gameOpenIdAreaId)}; success=${gameOpenIdSucceeded}`
+  );
+
+  if (gameOpenIdSucceeded) {
+    emitDiagnostic(
+      onDiagnostic,
+      "[恢复结论] game_openid Cookie 参数请求成功，正式判定将采用本次响应"
+    );
+    return { response: gameOpenIdResponse, source: "game-openid-cookie" };
+  }
+
+  let checkLoginResponse = null;
+  try {
+    checkLoginResponse = await postJson(
+      USER_CHECK_LOGIN_URL,
+      {},
+      (message) => emitDiagnostic(onDiagnostic, `[后备2-CheckLogin] ${message}`)
+    );
+  } catch (error) {
+    emitDiagnostic(
+      onDiagnostic,
+      `[后备2-CheckLogin] 请求异常: ${sanitizeDiagnosticText(error?.message || error)}`
+    );
+  }
+
+  const checkLoginCode = getApiBusinessCode(checkLoginResponse);
+  const checkLoginSucceeded = isApiResponseSuccessful(checkLoginResponse);
+  emitDiagnostic(
+    onDiagnostic,
+    `[后备2-CheckLogin] 结果: businessCode=${describeDiagnosticValue(checkLoginCode)}; success=${checkLoginSucceeded}`
+  );
+
+  let userInfoResponse = null;
+  try {
+    userInfoResponse = await postJson(
+      USER_INFO_NEW_URL,
+      {},
+      (message) => emitDiagnostic(onDiagnostic, `[后备3-GetUserInfoNew] ${message}`)
+    );
+  } catch (error) {
+    emitDiagnostic(
+      onDiagnostic,
+      `[后备3-GetUserInfoNew] 请求异常: ${sanitizeDiagnosticText(error?.message || error)}`
+    );
+  }
+
+  const userInfoCode = getApiBusinessCode(userInfoResponse);
+  const canonicalIntlOpenId = getCanonicalIntlOpenId(userInfoResponse);
+  const userInfoSucceeded =
+    isApiResponseSuccessful(userInfoResponse) && Boolean(canonicalIntlOpenId);
+  emitDiagnostic(
+    onDiagnostic,
+    `[后备3-GetUserInfoNew] 结果: businessCode=${describeDiagnosticValue(userInfoCode)}; info=${userInfoResponse?.data?.info ? "present" : "missing"}; success=${userInfoSucceeded}`
+  );
+  emitDiagnostic(
+    onDiagnostic,
+    `[后备3-GetUserInfoNew] 标识关系: ${summarizeIntlOpenIdRelation(canonicalIntlOpenId, gameOpenId)}`
+  );
+
+  if (!canonicalIntlOpenId) {
+    emitDiagnostic(
+      onDiagnostic,
+      `[恢复结论] 官网用户信息链路未取得正式 intl_openid；CheckLogin=${checkLoginSucceeded}; GetUserInfoNew=${userInfoSucceeded}`
+    );
+    return null;
+  }
+
+  let privacyResponse = null;
+  try {
+    privacyResponse = await postJson(
+      USER_PRIVACY_SETTING_URL,
+      { intl_openid: canonicalIntlOpenId },
+      (message) => emitDiagnostic(onDiagnostic, `[后备4-正式intl_openid隐私] ${message}`)
+    );
+  } catch (error) {
+    emitDiagnostic(
+      onDiagnostic,
+      `[后备4-正式intl_openid隐私] 请求异常: ${sanitizeDiagnosticText(error?.message || error)}`
+    );
+  }
+
+  const privacyCode = getApiBusinessCode(privacyResponse);
+  const privacySucceeded = isApiResponseSuccessful(privacyResponse);
+  emitDiagnostic(
+    onDiagnostic,
+    `[后备4-正式intl_openid隐私] 结果: businessCode=${describeDiagnosticValue(privacyCode)}; success=${privacySucceeded}`
+  );
+
+  let canonicalPlayerInfoResponse = null;
+  try {
+    canonicalPlayerInfoResponse = await postJson(
+      USER_GAME_PLAYER_INFO_URL,
+      { intl_openid: canonicalIntlOpenId },
+      (message) => emitDiagnostic(onDiagnostic, `[后备5-正式intl_openid玩家] ${message}`)
+    );
+  } catch (error) {
+    emitDiagnostic(
+      onDiagnostic,
+      `[后备5-正式intl_openid玩家] 请求异常: ${sanitizeDiagnosticText(error?.message || error)}`
+    );
+  }
+
+  const canonicalPlayerInfoCode = getApiBusinessCode(canonicalPlayerInfoResponse);
+  const canonicalPlayerInfoAreaId = canonicalPlayerInfoResponse?.data?.area_id;
+  const canonicalPlayerInfoSucceeded =
+    isPlayerInfoResponseSuccessful(canonicalPlayerInfoResponse);
+  emitDiagnostic(
+    onDiagnostic,
+    `[后备5-正式intl_openid玩家] 结果: businessCode=${describeDiagnosticValue(canonicalPlayerInfoCode)}; area_id=${describeDiagnosticValue(canonicalPlayerInfoAreaId)}; success=${canonicalPlayerInfoSucceeded}`
+  );
+
+  if (canonicalPlayerInfoSucceeded) {
+    emitDiagnostic(
+      onDiagnostic,
+      `[恢复结论] 正式 intl_openid 玩家请求成功，正式判定将采用本次响应；privacy=${privacySucceeded}`
+    );
+    return {
+      response: canonicalPlayerInfoResponse,
+      source: "canonical-intl-openid",
+    };
+  }
+
+  emitDiagnostic(
+    onDiagnostic,
+    `[恢复结论] 所有恢复路径均未取得有效玩家信息；CheckLogin=${checkLoginSucceeded}; privacy=${privacySucceeded}; playerBusinessCode=${describeDiagnosticValue(canonicalPlayerInfoCode)}`
+  );
+  return null;
+};
+
+// 获取最新昵称（优先 BasicInfo.nickname，回退旧 role_name）；不因空昵称判定 Cookie 失效
+export const getRoleName = async (onDiagnostic) => {
+  emitDiagnostic(onDiagnostic, "getRoleName 开始");
+  const oldPromise = postJson(
+    USER_GAME_PLAYER_INFO_URL,
+    {},
+    onDiagnostic
+  ).catch(err => {
+    emitDiagnostic(
+      onDiagnostic,
+      `GetUserGamePlayerInfo 请求失败并回退为空结果: ${sanitizeDiagnosticText(err?.message || err)}`
+    );
+    return { error: err };
+  });
+
+  let oldResp = await oldPromise;
+  if (
+    !oldResp.error &&
+    String(getApiBusinessCode(oldResp)) === PLAYER_INFO_SYSTEM_ERROR_CODE
+  ) {
+    const recovery = await recoverPlayerInfoSystemError(onDiagnostic);
+    if (recovery?.response) {
+      oldResp = recovery.response;
+      emitDiagnostic(
+        onDiagnostic,
+        `[恢复] 正式判定已切换到恢复响应: source=${recovery.source}`
+      );
+    } else {
+      emitDiagnostic(
+        onDiagnostic,
+        "[恢复] 恢复未成功，正式判定继续使用首次原始响应"
+      );
+    }
+  }
+
   const areaId = (!oldResp.error && (oldResp?.data?.area_id)) ? oldResp.data.area_id : "";
   const oldName = !oldResp.error ? (oldResp?.data?.role_name || "") : "";
 
+  emitDiagnostic(
+    onDiagnostic,
+    `GetUserGamePlayerInfo 解析结果: area_id=${describeDiagnosticValue(areaId)}; role_name=${oldName ? "present" : "empty"}; requestError=${oldResp.error ? "yes" : "no"}`
+  );
 
   if (areaId) {
     let intlOpenId = "";
-    intlOpenId = await getIntlOpenId();
+    try {
+      intlOpenId = await getIntlOpenId();
+      emitDiagnostic(onDiagnostic, `game_openid Cookie: ${intlOpenId ? "present" : "empty"}`);
+    } catch (error) {
+      emitDiagnostic(
+        onDiagnostic,
+        `读取 game_openid Cookie 失败: ${sanitizeDiagnosticText(error?.message || error)}`
+      );
+      throw error;
+    }
     const payload = { nikke_area_id: parseInt(areaId) };
     if (intlOpenId) payload.intl_open_id = intlOpenId;
     const basicResp = await postJson(
       "https://api.blablalink.com/api/game/proxy/Game/GetUserProfileBasicInfo",
-      payload
-    ).catch(err => ({ error: err }));
+      payload,
+      onDiagnostic
+    ).catch(err => {
+      emitDiagnostic(
+        onDiagnostic,
+        `GetUserProfileBasicInfo 请求失败，保留旧接口结果: ${sanitizeDiagnosticText(err?.message || err)}`
+      );
+      return { error: err };
+    });
     if (!basicResp.error) {
       const info = basicResp?.data?.basic_info || {};
       const finalName = info.nickname || oldName || "";
+      const finalAreaId = info.area_id || areaId;
+      emitDiagnostic(
+        onDiagnostic,
+        `getRoleName 完成: source=basic-or-old; area_id=${describeDiagnosticValue(finalAreaId)}; role_name=${finalName ? "present" : "empty"}`
+      );
       return {
         role_name: finalName,
-        area_id: info.area_id || areaId
+        area_id: finalAreaId
       };
     }
   }
-  if (!oldResp.error) return { role_name: oldName || "", area_id: areaId };
+  if (!oldResp.error) {
+    emitDiagnostic(
+      onDiagnostic,
+      `getRoleName 完成: source=old; area_id=${describeDiagnosticValue(areaId)}; role_name=${oldName ? "present" : "empty"}`
+    );
+    return { role_name: oldName || "", area_id: areaId };
+  }
+  emitDiagnostic(onDiagnostic, "getRoleName 完成: source=request-error; area_id=empty-string; role_name=empty");
   return { role_name: "", area_id: areaId };
 };
 
@@ -432,29 +882,62 @@ const parseCookieValue = (cookieStr, name) => {
 };
 
 /**
- * 验证账号 Cookie 是否有效（并发模式）
+ * 验证账号 Cookie 登录态是否有效（并发模式）。
+ * 玩家信息接口不可用时使用 CheckLogin 区分“Cookie 失效”和“角色信息暂不可用”。
  * @param {{game_uid: string, cookie: string}} account - 账号对象
- * @returns {Promise<{valid: boolean, roleInfo?: {role_name: string, area_id: string}, error?: string}>}
+ * @returns {Promise<{
+ *   valid: boolean,
+ *   roleReady?: boolean,
+ *   roleInfo?: {role_name: string, area_id: string},
+ *   error?: string
+ * }>}
  */
-export const validateCookieWithAccount = async (account) => {
+export const validateCookieWithAccount = async (account, onDiagnostic) => {
+  const cookieNames = String(account.cookie || "")
+    .split(/;\s*/)
+    .map((entry) => entry.split("=")[0]?.trim())
+    .filter(Boolean);
+  emitDiagnostic(
+    onDiagnostic,
+    `保存Cookie检查: cookie=${account.cookie ? "present" : "empty"}; game_uid=${account.game_uid ? "present" : "empty"}; cookieCount=${cookieNames.length}; cookieNames=[${[...new Set(cookieNames)].sort().join(",")}]`
+  );
+
   if (!account.cookie) {
+    emitDiagnostic(onDiagnostic, "保存Cookie验证结束: invalid; reason=无 Cookie");
     return { valid: false, error: "无 Cookie" };
   }
-  
+
+  if (!account.game_uid) {
+    emitDiagnostic(onDiagnostic, "保存Cookie验证结束: invalid; reason=缺少 game_uid");
+    return { valid: false, error: "缺少 game_uid" };
+  }
+
+  let playerInfoResponse = null;
+  let playerInfoError = null;
   try {
-    const resp = await postJsonWithAccount(
-      "https://api.blablalink.com/api/ugc/direct/standalonesite/User/GetUserGamePlayerInfo",
+    playerInfoResponse = await postJsonWithAccount(
+      USER_GAME_PLAYER_INFO_URL,
       {},
-      account.game_uid
+      account.game_uid,
+      onDiagnostic
     );
-    
-    const areaId = resp?.data?.area_id;
-    const roleName = resp?.data?.role_name || "";
-    
-    if (!areaId) {
-      return { valid: false, error: "area_id 为空" };
-    }
-    
+  } catch (error) {
+    playerInfoError = error;
+    emitDiagnostic(
+      onDiagnostic,
+      `保存Cookie玩家信息请求异常，将使用 CheckLogin 判断登录态: ${sanitizeDiagnosticText(error?.message || error)}`
+    );
+  }
+
+  const areaId = playerInfoResponse?.data?.area_id;
+  const roleName = playerInfoResponse?.data?.role_name || "";
+  const playerInfoCode = getApiBusinessCode(playerInfoResponse);
+  emitDiagnostic(
+    onDiagnostic,
+    `保存Cookie玩家信息解析: businessCode=${describeDiagnosticValue(playerInfoCode)}; area_id=${describeDiagnosticValue(areaId)}; role_name=${roleName ? "present" : "empty"}`
+  );
+
+  if (areaId) {
     // 尝试获取更详细的信息
     const intlOpenId = parseCookieValue(account.cookie, "game_openid") || "";
     const payload = { nikke_area_id: parseInt(areaId) };
@@ -463,21 +946,86 @@ export const validateCookieWithAccount = async (account) => {
     const basicResp = await postJsonWithAccount(
       "https://api.blablalink.com/api/game/proxy/Game/GetUserProfileBasicInfo",
       payload,
-      account.game_uid
-    ).catch(() => null);
+      account.game_uid,
+      onDiagnostic
+    ).catch((error) => {
+      emitDiagnostic(
+        onDiagnostic,
+        `保存Cookie BasicInfo 请求失败但不影响有效性: ${sanitizeDiagnosticText(error?.message || error)}`
+      );
+      return null;
+    });
     
     const finalName = basicResp?.data?.basic_info?.nickname || roleName || "";
+    emitDiagnostic(
+      onDiagnostic,
+      `保存Cookie验证结束: valid; area_id=${describeDiagnosticValue(areaId)}; role_name=${finalName ? "present" : "empty"}`
+    );
     
     return {
       valid: true,
+      roleReady: true,
       roleInfo: {
         role_name: finalName,
         area_id: String(areaId)
       }
     };
-  } catch (error) {
-    return { valid: false, error: error.message };
   }
+
+  emitDiagnostic(
+    onDiagnostic,
+    "保存Cookie未取得 area_id，改用 CheckLogin 验证 Cookie 登录态"
+  );
+
+  let checkLoginResponse = null;
+  let checkLoginError = null;
+  try {
+    checkLoginResponse = await postJsonWithAccount(
+      USER_CHECK_LOGIN_URL,
+      {},
+      account.game_uid,
+      (message) => emitDiagnostic(onDiagnostic, `[登录态后备-CheckLogin] ${message}`)
+    );
+  } catch (error) {
+    checkLoginError = error;
+    emitDiagnostic(
+      onDiagnostic,
+      `[登录态后备-CheckLogin] 请求异常: ${sanitizeDiagnosticText(error?.message || error)}`
+    );
+  }
+
+  const checkLoginCode = getApiBusinessCode(checkLoginResponse);
+  const authenticated = isApiResponseSuccessful(checkLoginResponse);
+  emitDiagnostic(
+    onDiagnostic,
+    `[登录态后备-CheckLogin] 判定: businessCode=${describeDiagnosticValue(checkLoginCode)}; authenticated=${authenticated}`
+  );
+
+  if (authenticated) {
+    emitDiagnostic(
+      onDiagnostic,
+      `保存Cookie验证结束: authenticated; roleReady=false; playerBusinessCode=${describeDiagnosticValue(playerInfoCode)}`
+    );
+    return {
+      valid: true,
+      roleReady: false,
+      roleInfo: {
+        role_name: roleName,
+        area_id: ""
+      }
+    };
+  }
+
+  const errorMessage =
+    checkLoginError?.message ||
+    (checkLoginCode !== undefined && checkLoginCode !== null
+      ? `CheckLogin 失败 (${checkLoginCode})`
+      : playerInfoError?.message || "Cookie 登录态验证失败");
+  emitDiagnostic(
+    onDiagnostic,
+    `保存Cookie验证结束: invalid; reason=${sanitizeDiagnosticText(errorMessage)}`
+  );
+  return { valid: false, error: errorMessage };
 };
 
 /**
