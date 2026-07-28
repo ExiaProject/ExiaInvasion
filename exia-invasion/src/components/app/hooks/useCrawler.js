@@ -16,6 +16,7 @@ import { loadBaseAccountDict, getRoleName, prefetchMainlineCatalog, validateCook
 import { registerCookieRules, unregisterAllRules } from "../../../services/requestInterceptor.js";
 import { parseGameUidFromCookie, cookieArrToStr } from "../utils.js";
 import { BATCH_SIZE, STAGGER_DELAY } from "../constants.js";
+import { crawlWithEmptyDataRetry } from "../../../utils/crawlValidation.js";
 
 const AUTO_SAVE_DATA = true;
 const REQUIRED_LOGIN_COOKIE_NAMES = ["game_token", "game_uid", "game_openid"];
@@ -368,31 +369,46 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
       });
     });
     const uniqueNameCodes = Array.from(new Set(allNameCodes));
-    if (uniqueNameCodes.length === 0) return;
+    const crawlSummary = {
+      configuredCharacterCount: uniqueNameCodes.length,
+      ownedCharacterCount: 0,
+      requestedCharacterCount: 0,
+      receivedDetailCount: 0,
+      populatedCharacterCount: 0,
+    };
+    if (uniqueNameCodes.length === 0) return crawlSummary;
     
     try {
       const userCharacters = await getUserCharactersWithAccount(account, account.roleInfo.area_id);
       
       const userCharMap = {};
       userCharacters.forEach(char => {
-        userCharMap[char.name_code] = char;
+        userCharMap[String(char.name_code)] = char;
       });
-      const ownedSet = new Set(userCharacters.map(char => char.name_code));
-      const filteredNameCodes = uniqueNameCodes.filter(code => ownedSet.has(code));
-      if (filteredNameCodes.length === 0) return;
+      const ownedSet = new Set(userCharacters.map(char => String(char.name_code)));
+      crawlSummary.ownedCharacterCount = ownedSet.size;
+      const filteredNameCodes = uniqueNameCodes.filter(
+        code => ownedSet.has(String(code))
+      );
+      crawlSummary.requestedCharacterCount = filteredNameCodes.length;
+      if (filteredNameCodes.length === 0) return crawlSummary;
 
       const characterDetails = await getCharacterDetailsWithAccount(account, account.roleInfo.area_id, filteredNameCodes);
       
       const detailsMap = {};
       characterDetails.forEach(detail => {
-        detailsMap[detail.name_code] = detail;
+        detailsMap[String(detail.name_code)] = detail;
       });
+      crawlSummary.receivedDetailCount = Object.keys(detailsMap).length;
+      const populatedNameCodes = new Set();
       
       Object.keys(dict.elements).forEach(elementKey => {
         const characterArray = dict.elements[elementKey];
         characterArray.forEach(details => {
-          const charDetail = detailsMap[details.name_code];
+          const detailKey = String(details.name_code);
+          const charDetail = detailsMap[detailKey];
           if (charDetail) {
+            populatedNameCodes.add(detailKey);
             details.skill1_level = charDetail.skill1_lv;
             details.skill2_level = charDetail.skill2_lv;
             details.skill_burst_level = charDetail.ulti_skill_lv;
@@ -414,7 +430,7 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
               details.item_rare = "";
             }
             
-            const userChar = userCharMap[details.name_code];
+            const userChar = userCharMap[detailKey];
             if (userChar) {
               details.limit_break = { grade: userChar.grade, core: userChar.core };
             } else if (charDetail) {
@@ -434,6 +450,8 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
           }
         });
       });
+      crawlSummary.populatedCharacterCount = populatedNameCodes.size;
+      return crawlSummary;
     } catch (error) {
       console.error("获取角色详情失败:", error);
       throw error;
@@ -834,28 +852,43 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
         const accountName = acc.roleInfo?.role_name || acc.username || acc.name || t("noName");
         
         try {
-          // 构建数据字典
-          const dict = await loadBaseAccountDict();
-          dict.name = acc.roleInfo.role_name || acc.username || acc.name || "";
-          dict.area_id = acc.roleInfo.area_id;
-          dict.cookie = acc.cookie || "";
-          
-          // 解析 game_uid
-          const gameUidMatch = acc.cookie?.match(/game_uid=([^;]*)/);
-          dict.game_uid = acc.game_uid || (gameUidMatch ? gameUidMatch[1] : "");
-          
-          // 获取前哨信息
-          const { synchroLevel, outpostLevel } = await getOutpostInfoWithAccount(acc, acc.roleInfo.area_id);
-          dict.synchroLevel = synchroLevel;
-          dict.outpostLevel = outpostLevel;
-          
-          // 获取主线进度
-          const prog = await getCampaignProgressWithAccount(acc, acc.roleInfo.area_id, catalogMap);
-          dict.normalProgress = prog.normal || "";
-          dict.hardProgress = prog.hard || "";
-          
-          // 获取角色详情
-          await addCharacterDetailsToDictWithAccount(dict, acc);
+          const { dict } = await crawlWithEmptyDataRetry({
+            crawlOnce: async () => {
+              // 每次重试都重新构建字典并重新爬取该玩家的全部数据。
+              const nextDict = await loadBaseAccountDict();
+              nextDict.name = acc.roleInfo.role_name || acc.username || acc.name || "";
+              nextDict.area_id = acc.roleInfo.area_id;
+              nextDict.cookie = acc.cookie || "";
+
+              // 解析 game_uid
+              const gameUidMatch = acc.cookie?.match(/game_uid=([^;]*)/);
+              nextDict.game_uid = acc.game_uid || (gameUidMatch ? gameUidMatch[1] : "");
+
+              // 获取前哨信息
+              const { synchroLevel, outpostLevel } = await getOutpostInfoWithAccount(acc, acc.roleInfo.area_id);
+              nextDict.synchroLevel = synchroLevel;
+              nextDict.outpostLevel = outpostLevel;
+
+              // 获取主线进度
+              const prog = await getCampaignProgressWithAccount(acc, acc.roleInfo.area_id, catalogMap);
+              nextDict.normalProgress = prog.normal || "";
+              nextDict.hardProgress = prog.hard || "";
+
+              // 获取角色详情，并保留足够的信息区分合法空结果和异常空响应。
+              const characterCrawlSummary =
+                await addCharacterDetailsToDictWithAccount(nextDict, acc);
+
+              return {
+                dict: nextDict,
+                characterCrawlSummary,
+              };
+            },
+            onRetry: ({ nextAttempt, maxAttempts, delayMs, reason }) => {
+              addLog(
+                `⚠ ${accountName} - 检测到异常空数据：${reason}，${delayMs}ms 后重新爬取（${nextAttempt}/${maxAttempts}）`
+              );
+            },
+          });
           
           // 计算 AEL 分
           computeAELForDict(dict);
