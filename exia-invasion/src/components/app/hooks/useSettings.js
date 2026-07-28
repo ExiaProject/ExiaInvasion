@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getSettings, setSettings, getCharacters, setCharacters } from "../../../services/storage.js";
+import { isCloudSyncUiVisible } from "../../../utils/cloudSyncUi.js";
 
 /**
  * 设置管理 Hook
@@ -15,6 +16,7 @@ export function useSettings() {
   const [server, setServer] = useState("global");
   const [sortFlag, setSortFlag] = useState("1");
   const [collapseEquipDetails, setCollapseEquipDetails] = useState(false);
+  const [showCloudSyncUi, setShowCloudSyncUi] = useState(true);
 
   // 初始化设置加载
   useEffect(() => {
@@ -29,6 +31,7 @@ export function useSettings() {
       setActivateTab(Boolean(s.activateTab));
       setServer(s.server || "global");
       setSortFlag(s.sortFlag || "1");
+      setShowCloudSyncUi(isCloudSyncUiVisible(s));
 
       // 读取全局"折叠词条细节"开关
       setCollapseEquipDetails(chars?.options?.showEquipDetails === false);
@@ -39,9 +42,11 @@ export function useSettings() {
   useEffect(() => {
     const handler = (changes, area) => {
       if (area === "local" && changes.settings) {
-        const nextLang = changes.settings.newValue?.lang;
+        const nextSettings = changes.settings.newValue || {};
+        const nextLang = nextSettings.lang;
         if (nextLang) setLang(nextLang);
-        if ("syncAccountSensitive" in (changes.settings.newValue || {})) {
+        setShowCloudSyncUi(isCloudSyncUiVisible(nextSettings));
+        if ("syncAccountSensitive" in nextSettings) {
           // legacy flag ignored in UI
         }
       }
@@ -115,6 +120,7 @@ export function useSettings() {
     server,
     sortFlag,
     collapseEquipDetails,
+    showCloudSyncUi,
 
     // 操作
     toggleEquipDetail,

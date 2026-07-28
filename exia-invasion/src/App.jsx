@@ -2,7 +2,7 @@
 // ========== Exia Invasion 主应用组件 ==========
 // 主要功能：账户管理、数据爬取、Excel导出、文件合并等
 
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Container,
   Stack,
@@ -47,7 +47,19 @@ export default function App() {
   const t = useCallback((k) => TRANSLATIONS[settings.lang][k] || k, [settings.lang]);
 
   // ========== 认证 ==========
-  const auth = useAuth({ t, showMessage });
+  const showAuthMessage = useCallback((message, severity) => {
+    if (settings.showCloudSyncUi) {
+      showMessage(message, severity);
+    }
+  }, [settings.showCloudSyncUi, showMessage]);
+  const auth = useAuth({ t, showMessage: showAuthMessage });
+  const { handleMenuClose } = auth;
+
+  useEffect(() => {
+    if (!settings.showCloudSyncUi) {
+      handleMenuClose();
+    }
+  }, [settings.showCloudSyncUi, handleMenuClose]);
 
   // ========== 云同步检查 ==========
 
@@ -86,6 +98,7 @@ export default function App() {
         handleMenuClose={auth.handleMenuClose}
         handleLogoutClick={auth.handleLogoutClick}
         openLoginDialog={auth.openLoginDialog}
+        showCloudSyncUi={settings.showCloudSyncUi}
       />
       
       <Container sx={{ mt: 2, width: 340, pb: 1 }}>

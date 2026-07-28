@@ -14,6 +14,7 @@ import TRANSLATIONS from "./i18n/translations.js";
 import { fetchAndCacheNikkeDirectory, getCachedNikkeDirectory } from "./services/api.js";
 import { getCharacters, getSettings, setSettings, setCharacters as persistCharacters } from "./services/storage.js";
 import { buildAccountsSignature } from "./utils/cloudCompare.js";
+import { isCloudSyncUiVisible } from "./utils/cloudSyncUi.js";
 import { getNikkeAvatarUrl as buildNikkeAvatarUrl } from "./utils/nikkeAvatar.js";
 import ManagementHeader from "./components/management/ManagementHeader.jsx";
 import AccountTabContent from "./components/management/AccountTabContent.jsx";
@@ -52,6 +53,7 @@ const ManagementPage = () => {
   const [lang, setLang] = useState("zh");
   const [syncAccountEmail, setSyncAccountEmail] = useState(false);
   const [syncAccountPassword, setSyncAccountPassword] = useState(false);
+  const [showCloudSyncUi, setShowCloudSyncUi] = useState(true);
   const t = useCallback((k) => TRANSLATIONS[lang][k] || k, [lang]);
 
   // ========== 核心状态管理 ==========
@@ -116,6 +118,7 @@ const ManagementPage = () => {
     showMessage,
     onAccountsOverridden: resetEditingState,
   });
+  const { syncConflict, setSyncConflict } = cloudSync;
 
   const accountActions = useAccountActions({
     t,
@@ -285,6 +288,12 @@ const ManagementPage = () => {
     });
   }, []);
 
+  const toggleCloudSyncUi = useCallback(() => {
+    const next = !showCloudSyncUi;
+    setShowCloudSyncUi(next);
+    setSettings({ showCloudSyncUi: next });
+  }, [showCloudSyncUi]);
+
   // ========== 初始化 Effects ==========
   // 管理页 Tab 持久化
   useEffect(() => {
@@ -304,28 +313,38 @@ const ManagementPage = () => {
   // 语言和同步设置初始化
   useEffect(() => {
     chrome.storage.local.get("settings", (r) => {
-      const nextLang = r.settings?.lang || "zh";
-      const legacySensitive = Boolean(r.settings?.syncAccountSensitive);
-      const nextEmail = r.settings?.syncAccountEmail ?? legacySensitive;
-      const nextPassword = r.settings?.syncAccountPassword ?? legacySensitive;
+      const nextSettings = r.settings || {};
+      const nextLang = nextSettings.lang || "zh";
+      const legacySensitive = Boolean(nextSettings.syncAccountSensitive);
+      const nextEmail = nextSettings.syncAccountEmail ?? legacySensitive;
+      const nextPassword = nextSettings.syncAccountPassword ?? legacySensitive;
       setLang(nextLang);
       setSyncAccountEmail(Boolean(nextEmail));
       setSyncAccountPassword(Boolean(nextPassword));
+      setShowCloudSyncUi(isCloudSyncUiVisible(nextSettings));
     });
     const handler = (c, area) => {
       if (area === "local" && c.settings) {
-        const nextLang = c.settings.newValue?.lang || "zh";
-          const legacySensitive = Boolean(c.settings.newValue?.syncAccountSensitive);
-          const nextEmail = c.settings.newValue?.syncAccountEmail ?? legacySensitive;
-          const nextPassword = c.settings.newValue?.syncAccountPassword ?? legacySensitive;
+        const nextSettings = c.settings.newValue || {};
+        const nextLang = nextSettings.lang || "zh";
+        const legacySensitive = Boolean(nextSettings.syncAccountSensitive);
+        const nextEmail = nextSettings.syncAccountEmail ?? legacySensitive;
+        const nextPassword = nextSettings.syncAccountPassword ?? legacySensitive;
         setLang(nextLang);
-          setSyncAccountEmail(Boolean(nextEmail));
-          setSyncAccountPassword(Boolean(nextPassword));
+        setSyncAccountEmail(Boolean(nextEmail));
+        setSyncAccountPassword(Boolean(nextPassword));
+        setShowCloudSyncUi(isCloudSyncUiVisible(nextSettings));
       }
     };
     chrome.storage.onChanged.addListener(handler);
     return () => chrome.storage.onChanged.removeListener(handler);
   }, []);
+
+  useEffect(() => {
+    if (!showCloudSyncUi && syncConflict.open) {
+      setSyncConflict((prev) => ({ ...prev, open: false }));
+    }
+  }, [showCloudSyncUi, syncConflict.open, setSyncConflict]);
 
   const persistSyncSettings = useCallback(async (nextEmail, nextPassword) => {
     const current = await getSettings();
@@ -436,7 +455,14 @@ const ManagementPage = () => {
   /* ---------- 渲染 ---------- */
   return (
     <>
-      <ManagementHeader iconUrl={iconUrl} lang={lang} onToggleLang={toggleLang} />
+      <ManagementHeader
+        iconUrl={iconUrl}
+        lang={lang}
+        onToggleLang={toggleLang}
+        t={t}
+        showCloudSyncUi={showCloudSyncUi}
+        onToggleCloudSyncUi={toggleCloudSyncUi}
+      />
       
       <Container maxWidth="xl" sx={{ mt: 4, pb: 8 }}>
         <Tabs value={tab} onChange={handleManagementTabChange} sx={{ mb: 3 }} aria-label={t("management")}>
@@ -446,6 +472,7 @@ const ManagementPage = () => {
         {tab === 0 && (
           <AccountTabContent
             t={t}
+            showCloudSyncUi={showCloudSyncUi}
             syncLabel={accountsSyncLabel}
             isSyncing={cloudSync.accountsSyncing}
             onUploadCloud={cloudSync.handleManualUploadAccounts}
@@ -497,6 +524,7 @@ const ManagementPage = () => {
           <CharacterTabContent
             t={t}
             lang={lang}
+            showCloudSyncUi={showCloudSyncUi}
             syncLabel={charactersSyncLabel}
             isSyncing={cloudSync.charactersSyncing}
             onUploadCloud={cloudSync.handleManualUploadCharacters}
@@ -572,15 +600,17 @@ const ManagementPage = () => {
         handleConfirmSelection={characterActions.handleConfirmSelection}
       />
 
-      <SyncConflictDialog
-        t={t}
-        open={cloudSync.syncConflict.open}
-        hasAccounts={cloudSync.syncConflict.hasAccounts}
-        hasCharacters={cloudSync.syncConflict.hasCharacters}
-        onUseLocal={cloudSync.handleConflictUseLocal}
-        onUseCloud={cloudSync.handleConflictUseCloud}
-        onLogout={cloudSync.handleConflictLogout}
-      />
+      {showCloudSyncUi && (
+        <SyncConflictDialog
+          t={t}
+          open={cloudSync.syncConflict.open}
+          hasAccounts={cloudSync.syncConflict.hasAccounts}
+          hasCharacters={cloudSync.syncConflict.hasCharacters}
+          onUseLocal={cloudSync.handleConflictUseLocal}
+          onUseCloud={cloudSync.handleConflictUseCloud}
+          onLogout={cloudSync.handleConflictLogout}
+        />
+      )}
 
       <Snackbar
         open={snackbar.open}
