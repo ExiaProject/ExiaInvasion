@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 
-const GITHUB_REPO = "entishl/ExiaInvasion";
+const GITHUB_REPO = "IsolateOB/ExiaInvasion";
 const UPDATE_CHECK_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
 
