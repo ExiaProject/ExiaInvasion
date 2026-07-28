@@ -72,6 +72,7 @@ const AccountTabContent = ({
   deleteRow,
   addRow,
   renderText,
+  showCloudSyncUi,
   syncLabel,
   isSyncing,
   onUploadCloud,
@@ -86,7 +87,7 @@ const AccountTabContent = ({
     <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2, gap: 2 }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
         <Typography variant="h6">{t("accountTable")}</Typography>
-        {isSyncing ? (
+        {showCloudSyncUi && (isSyncing ? (
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             <CircularProgress size={14} />
             <Typography variant="body2" color="text.secondary" noWrap>
@@ -97,7 +98,7 @@ const AccountTabContent = ({
           <Typography variant="body2" color="text.secondary" noWrap>
             {syncLabel}
           </Typography>
-        ) : null}
+        ) : null)}
       </Box>
 
       <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -220,12 +221,16 @@ const AccountTabContent = ({
           {t("accountTemplateCreate") || "鏂板缓"}
         </Button>
 
-        <Button size="small" variant="outlined" startIcon={<CloudUploadIcon />} onClick={onUploadCloud} disabled={isSyncing} sx={{ minWidth: 96 }}>
-          {t("sync.upload") || "上传到云"}
-        </Button>
-        <Button size="small" variant="outlined" startIcon={<CloudDownloadIcon />} onClick={onDownloadCloud} disabled={isSyncing} sx={{ minWidth: 96 }}>
-          {t("sync.download") || "从云下载"}
-        </Button>
+        {showCloudSyncUi && (
+          <>
+            <Button size="small" variant="outlined" startIcon={<CloudUploadIcon />} onClick={onUploadCloud} disabled={isSyncing} sx={{ minWidth: 96 }}>
+              {t("sync.upload") || "上传到云"}
+            </Button>
+            <Button size="small" variant="outlined" startIcon={<CloudDownloadIcon />} onClick={onDownloadCloud} disabled={isSyncing} sx={{ minWidth: 96 }}>
+              {t("sync.download") || "从云下载"}
+            </Button>
+          </>
+        )}
 
         <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleImportAccounts} sx={{ minWidth: 80 }}>
           {t("importAccounts")}
@@ -263,27 +268,35 @@ const AccountTabContent = ({
           <TableCell width="20%">
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>{t("email")}</Typography>
-              <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-              <Typography variant="caption" color="text.secondary">{t("sync.cloud") || "云同步"}</Typography>
-              <Switch
-                size="small"
-                checked={Boolean(syncAccountEmail)}
-                onChange={toggleSyncAccountEmail}
-                inputProps={{ "aria-label": t("sync.cloud") || "云同步" }}
-              />
+              {showCloudSyncUi && (
+                <>
+                  <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+                  <Typography variant="caption" color="text.secondary">{t("sync.cloud") || "云同步"}</Typography>
+                  <Switch
+                    size="small"
+                    checked={Boolean(syncAccountEmail)}
+                    onChange={toggleSyncAccountEmail}
+                    inputProps={{ "aria-label": t("sync.cloud") || "云同步" }}
+                  />
+                </>
+              )}
             </Box>
           </TableCell>
           <TableCell width="15%" sx={{ minWidth: 180 }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>{t("password")}</Typography>
-              <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-              <Typography variant="caption" color="text.secondary">{t("sync.cloud") || "云同步"}</Typography>
-              <Switch
-                size="small"
-                checked={Boolean(syncAccountPassword)}
-                onChange={toggleSyncAccountPassword}
-                inputProps={{ "aria-label": t("sync.cloud") || "云同步" }}
-              />
+              {showCloudSyncUi && (
+                <>
+                  <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+                  <Typography variant="caption" color="text.secondary">{t("sync.cloud") || "云同步"}</Typography>
+                  <Switch
+                    size="small"
+                    checked={Boolean(syncAccountPassword)}
+                    onChange={toggleSyncAccountPassword}
+                    inputProps={{ "aria-label": t("sync.cloud") || "云同步" }}
+                  />
+                </>
+              )}
             </Box>
           </TableCell>
           <TableCell width="20%">{t("cookie")}</TableCell>

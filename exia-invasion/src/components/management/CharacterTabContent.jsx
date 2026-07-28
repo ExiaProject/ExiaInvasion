@@ -147,6 +147,7 @@ const CharacterTabContent = ({
   onCharDragOver,
   onCharDrop,
   onCharDragEnd,
+  showCloudSyncUi,
   syncLabel,
   isSyncing,
   onUploadCloud,
@@ -178,7 +179,7 @@ const CharacterTabContent = ({
           sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}
         >
           <Typography variant="h6">{t("characterManagement")}</Typography>
-          {isSyncing ? (
+          {showCloudSyncUi && (isSyncing ? (
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
               <CircularProgress size={14} />
               <Typography variant="body2" color="text.secondary" noWrap>
@@ -189,7 +190,7 @@ const CharacterTabContent = ({
             <Typography variant="body2" color="text.secondary" noWrap>
               {syncLabel}
             </Typography>
-          ) : null}
+          ) : null)}
         </Box>
 
         <Box
@@ -371,26 +372,30 @@ const CharacterTabContent = ({
             {t("templateCreate") || "鏂板缓"}
           </Button>
 
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<CloudUploadIcon />}
-            onClick={onUploadCloud}
-            disabled={isSyncing}
-            sx={{ minWidth: 96 }}
-          >
-            {t("sync.upload") || "上传到云"}
-          </Button>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<CloudDownloadIcon />}
-            onClick={onDownloadCloud}
-            disabled={isSyncing}
-            sx={{ minWidth: 96 }}
-          >
-            {t("sync.download") || "从云下载"}
-          </Button>
+          {showCloudSyncUi && (
+            <>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<CloudUploadIcon />}
+                onClick={onUploadCloud}
+                disabled={isSyncing}
+                sx={{ minWidth: 96 }}
+              >
+                {t("sync.upload") || "上传到云"}
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<CloudDownloadIcon />}
+                onClick={onDownloadCloud}
+                disabled={isSyncing}
+                sx={{ minWidth: 96 }}
+              >
+                {t("sync.download") || "从云下载"}
+              </Button>
+            </>
+          )}
 
           <Button
             variant="outlined"
