@@ -29,6 +29,9 @@ const TRANSLATIONS = {
     server: "服务器",
     hmt: "香港/澳门/台湾",
     global: "日本/韩国/北美/东南亚/全球",
+    manualAreaId: "强制 area_id（仅本次会话）",
+    manualAreaIdHelp: "填写后将跳过自动区域和昵称探测，并对本批账号强制使用该值；重开侧栏后清空。",
+    manualAreaIdInvalid: "请输入大于 0 的整数 area_id。",
     langLabel: "中文",
     // Auth
     "auth.login": "登录",
@@ -273,6 +276,9 @@ const TRANSLATIONS = {
     server: "Server",
     hmt: "HK/MC/TW",
     global: "JP/KR/NA/SEA/Global",
+    manualAreaId: "Force area_id (this session only)",
+    manualAreaIdHelp: "Skips automatic region and nickname lookup and forces this value for the batch. Cleared when the side panel is reopened.",
+    manualAreaIdInvalid: "Enter an integer area_id greater than 0.",
     langLabel: "EN",
     // Auth
     "auth.login": "Login",

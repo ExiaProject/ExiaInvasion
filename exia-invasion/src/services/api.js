@@ -885,6 +885,8 @@ const parseCookieValue = (cookieStr, name) => {
  * 验证账号 Cookie 登录态是否有效（并发模式）。
  * 玩家信息接口不可用时使用 CheckLogin 区分“Cookie 失效”和“角色信息暂不可用”。
  * @param {{game_uid: string, cookie: string}} account - 账号对象
+ * @param {Function} [onDiagnostic] - 诊断日志回调
+ * @param {{skipRoleLookup?: boolean}} [options] - 是否跳过玩家信息接口并直接验证登录态
  * @returns {Promise<{
  *   valid: boolean,
  *   roleReady?: boolean,
@@ -892,7 +894,11 @@ const parseCookieValue = (cookieStr, name) => {
  *   error?: string
  * }>}
  */
-export const validateCookieWithAccount = async (account, onDiagnostic) => {
+export const validateCookieWithAccount = async (
+  account,
+  onDiagnostic,
+  { skipRoleLookup = false } = {}
+) => {
   const cookieNames = String(account.cookie || "")
     .split(/;\s*/)
     .map((entry) => entry.split("=")[0]?.trim())
@@ -914,28 +920,39 @@ export const validateCookieWithAccount = async (account, onDiagnostic) => {
 
   let playerInfoResponse = null;
   let playerInfoError = null;
-  try {
-    playerInfoResponse = await postJsonWithAccount(
-      USER_GAME_PLAYER_INFO_URL,
-      {},
-      account.game_uid,
-      onDiagnostic
-    );
-  } catch (error) {
-    playerInfoError = error;
+  if (skipRoleLookup) {
     emitDiagnostic(
       onDiagnostic,
-      `保存Cookie玩家信息请求异常，将使用 CheckLogin 判断登录态: ${sanitizeDiagnosticText(error?.message || error)}`
+      "手动 area_id 模式：跳过玩家信息接口，直接使用 CheckLogin 验证登录态"
     );
+  } else {
+    try {
+      playerInfoResponse = await postJsonWithAccount(
+        USER_GAME_PLAYER_INFO_URL,
+        {},
+        account.game_uid,
+        onDiagnostic
+      );
+    } catch (error) {
+      playerInfoError = error;
+      emitDiagnostic(
+        onDiagnostic,
+        `保存Cookie玩家信息请求异常，将使用 CheckLogin 判断登录态: ${sanitizeDiagnosticText(error?.message || error)}`
+      );
+    }
   }
 
-  const areaId = playerInfoResponse?.data?.area_id;
-  const roleName = playerInfoResponse?.data?.role_name || "";
-  const playerInfoCode = getApiBusinessCode(playerInfoResponse);
-  emitDiagnostic(
-    onDiagnostic,
-    `保存Cookie玩家信息解析: businessCode=${describeDiagnosticValue(playerInfoCode)}; area_id=${describeDiagnosticValue(areaId)}; role_name=${roleName ? "present" : "empty"}`
-  );
+  const areaId = skipRoleLookup ? "" : playerInfoResponse?.data?.area_id;
+  const roleName = skipRoleLookup ? "" : (playerInfoResponse?.data?.role_name || "");
+  const playerInfoCode = skipRoleLookup
+    ? undefined
+    : getApiBusinessCode(playerInfoResponse);
+  if (!skipRoleLookup) {
+    emitDiagnostic(
+      onDiagnostic,
+      `保存Cookie玩家信息解析: businessCode=${describeDiagnosticValue(playerInfoCode)}; area_id=${describeDiagnosticValue(areaId)}; role_name=${roleName ? "present" : "empty"}`
+    );
+  }
 
   if (areaId) {
     // 尝试获取更详细的信息
@@ -974,7 +991,9 @@ export const validateCookieWithAccount = async (account, onDiagnostic) => {
 
   emitDiagnostic(
     onDiagnostic,
-    "保存Cookie未取得 area_id，改用 CheckLogin 验证 Cookie 登录态"
+    skipRoleLookup
+      ? "手动 area_id 模式：开始 CheckLogin 登录态验证"
+      : "保存Cookie未取得 area_id，改用 CheckLogin 验证 Cookie 登录态"
   );
 
   let checkLoginResponse = null;
@@ -1004,7 +1023,9 @@ export const validateCookieWithAccount = async (account, onDiagnostic) => {
   if (authenticated) {
     emitDiagnostic(
       onDiagnostic,
-      `保存Cookie验证结束: authenticated; roleReady=false; playerBusinessCode=${describeDiagnosticValue(playerInfoCode)}`
+      skipRoleLookup
+        ? "保存Cookie验证结束: authenticated; roleReady=false; playerInfo=skipped-manual-area-id"
+        : `保存Cookie验证结束: authenticated; roleReady=false; playerBusinessCode=${describeDiagnosticValue(playerInfoCode)}`
     );
     return {
       valid: true,

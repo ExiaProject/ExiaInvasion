@@ -12,10 +12,12 @@ import {
   Box,
   Typography,
   CircularProgress,
+  TextField,
 } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SaveIcon from "@mui/icons-material/Save";
 import SettingsIcon from "@mui/icons-material/Settings";
+import { parseManualAreaId } from "../../utils/areaId.js";
 
 const CrawlerTabContent = ({
   t,
@@ -25,6 +27,8 @@ const CrawlerTabContent = ({
   collapseEquipDetails,
   activateTab,
   server,
+  manualAreaId,
+  onManualAreaIdChange,
   // 开关处理
   toggleSaveZip,
   toggleExportJson,
@@ -37,6 +41,15 @@ const CrawlerTabContent = ({
   handleSaveCookie,
   handleStart,
 }) => {
+  const parsedManualAreaId = parseManualAreaId(manualAreaId);
+  const manualAreaIdInvalid = !parsedManualAreaId.valid;
+
+  const normalizeManualAreaId = () => {
+    if (parsedManualAreaId.valid) {
+      onManualAreaIdChange(parsedManualAreaId.value);
+    }
+  };
+
   return (
     <>
       {/* 保存当前 Cookie */}
@@ -91,12 +104,36 @@ const CrawlerTabContent = ({
           <MenuItem value="global">{t("global")}</MenuItem>
         </Select>
       </Box>
+
+      <TextField
+        variant="outlined"
+        size="small"
+        fullWidth
+        label={t("manualAreaId")}
+        value={manualAreaId}
+        onChange={(event) => onManualAreaIdChange(event.target.value)}
+        onBlur={normalizeManualAreaId}
+        error={manualAreaIdInvalid}
+        helperText={
+          manualAreaIdInvalid
+            ? t("manualAreaIdInvalid")
+            : t("manualAreaIdHelp")
+        }
+        disabled={loading || cookieLoading}
+        slotProps={{
+          htmlInput: {
+            inputMode: "numeric",
+            pattern: "[0-9]*",
+            "aria-label": t("manualAreaId"),
+          },
+        }}
+      />
       
       {/* 运行按钮 */}
       <Button
         variant="contained"
         fullWidth
-        onClick={() => handleStart({ onlyCookie: false })}
+        onClick={() => handleStart({ onlyCookie: false, manualAreaId })}
         startIcon={
           loading ? (
             <CircularProgress size={20} color="inherit" />
@@ -104,7 +141,7 @@ const CrawlerTabContent = ({
             <PlayArrowIcon />
           )
         }
-        disabled={loading || cookieLoading}
+        disabled={loading || cookieLoading || manualAreaIdInvalid}
       >
         {t("fetchCharacters")}
       </Button>
