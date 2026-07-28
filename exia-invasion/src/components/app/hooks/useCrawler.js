@@ -5,6 +5,10 @@ import { useState, useCallback } from "react";
 import JSZip from "jszip";
 import saveDictToExcel from "../../../utils/excel.js";
 import { computeAELForDict } from "../../../utils/ael.js";
+import {
+  applyManualAreaIdOverride,
+  parseManualAreaId,
+} from "../../../utils/areaId.js";
 import { createUniqueExportFileName } from "../../../utils/exportFilenames.js";
 import { getAccounts, setAccounts, getCharacters } from "../../../services/storage.js";
 import { applyCookieStr, clearSiteCookies, getCurrentCookies } from "../../../services/cookie.js";
@@ -12,6 +16,7 @@ import { loadBaseAccountDict, getRoleName, prefetchMainlineCatalog, validateCook
 import { registerCookieRules, unregisterAllRules } from "../../../services/requestInterceptor.js";
 import { parseGameUidFromCookie, cookieArrToStr } from "../utils.js";
 import { BATCH_SIZE, STAGGER_DELAY } from "../constants.js";
+import { crawlWithEmptyDataRetry } from "../../../utils/crawlValidation.js";
 
 const AUTO_SAVE_DATA = true;
 const REQUIRED_LOGIN_COOKIE_NAMES = ["game_token", "game_uid", "game_openid"];
@@ -364,31 +369,46 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
       });
     });
     const uniqueNameCodes = Array.from(new Set(allNameCodes));
-    if (uniqueNameCodes.length === 0) return;
+    const crawlSummary = {
+      configuredCharacterCount: uniqueNameCodes.length,
+      ownedCharacterCount: 0,
+      requestedCharacterCount: 0,
+      receivedDetailCount: 0,
+      populatedCharacterCount: 0,
+    };
+    if (uniqueNameCodes.length === 0) return crawlSummary;
     
     try {
       const userCharacters = await getUserCharactersWithAccount(account, account.roleInfo.area_id);
       
       const userCharMap = {};
       userCharacters.forEach(char => {
-        userCharMap[char.name_code] = char;
+        userCharMap[String(char.name_code)] = char;
       });
-      const ownedSet = new Set(userCharacters.map(char => char.name_code));
-      const filteredNameCodes = uniqueNameCodes.filter(code => ownedSet.has(code));
-      if (filteredNameCodes.length === 0) return;
+      const ownedSet = new Set(userCharacters.map(char => String(char.name_code)));
+      crawlSummary.ownedCharacterCount = ownedSet.size;
+      const filteredNameCodes = uniqueNameCodes.filter(
+        code => ownedSet.has(String(code))
+      );
+      crawlSummary.requestedCharacterCount = filteredNameCodes.length;
+      if (filteredNameCodes.length === 0) return crawlSummary;
 
       const characterDetails = await getCharacterDetailsWithAccount(account, account.roleInfo.area_id, filteredNameCodes);
       
       const detailsMap = {};
       characterDetails.forEach(detail => {
-        detailsMap[detail.name_code] = detail;
+        detailsMap[String(detail.name_code)] = detail;
       });
+      crawlSummary.receivedDetailCount = Object.keys(detailsMap).length;
+      const populatedNameCodes = new Set();
       
       Object.keys(dict.elements).forEach(elementKey => {
         const characterArray = dict.elements[elementKey];
         characterArray.forEach(details => {
-          const charDetail = detailsMap[details.name_code];
+          const detailKey = String(details.name_code);
+          const charDetail = detailsMap[detailKey];
           if (charDetail) {
+            populatedNameCodes.add(detailKey);
             details.skill1_level = charDetail.skill1_lv;
             details.skill2_level = charDetail.skill2_lv;
             details.skill_burst_level = charDetail.ulti_skill_lv;
@@ -410,7 +430,7 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
               details.item_rare = "";
             }
             
-            const userChar = userCharMap[details.name_code];
+            const userChar = userCharMap[detailKey];
             if (userChar) {
               details.limit_break = { grade: userChar.grade, core: userChar.core };
             } else if (charDetail) {
@@ -430,6 +450,8 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
           }
         });
       });
+      crawlSummary.populatedCharacterCount = populatedNameCodes.size;
+      return crawlSummary;
     } catch (error) {
       console.error("获取角色详情失败:", error);
       throw error;
@@ -437,8 +459,22 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
   }, []);
 
   // ========== 数据爬取主流程 ==========
-  const handleStart = useCallback(async ({ onlyCookie = false } = {}) => {
+  const handleStart = useCallback(async ({
+    onlyCookie = false,
+    manualAreaId = "",
+  } = {}) => {
     clearLogs();
+
+    const parsedManualAreaId = parseManualAreaId(manualAreaId);
+    if (!onlyCookie && !parsedManualAreaId.valid) {
+      addLog(t("manualAreaIdInvalid"));
+      return;
+    }
+    const manualAreaIdOverride =
+      !onlyCookie && !parsedManualAreaId.empty
+        ? parsedManualAreaId.value
+        : "";
+
     if (onlyCookie) {
       setCookieLoading(true);
     } else {
@@ -490,6 +526,11 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
       
       addLog(t("starting"));
       addLog(`共 ${accounts.length} 个账号，开始并发验证...`);
+      if (manualAreaIdOverride) {
+        addLog(
+          `⚠ 手动 area_id 模式已启用：本批次将强制使用 ${manualAreaIdOverride}，并跳过自动区域和昵称探测`
+        );
+      }
       
       // 预抓取主线目录（仅执行一次）
       let catalogMap = {};
@@ -528,7 +569,11 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
             return (async () => {
               await new Promise(r => setTimeout(r, delay));
               const diagnosticLog = createAccountDiagnosticLogger(addLog, acc, "保存Cookie验证");
-              const result = await validateCookieWithAccount(acc, diagnosticLog);
+              const result = await validateCookieWithAccount(
+                acc,
+                diagnosticLog,
+                { skipRoleLookup: Boolean(manualAreaIdOverride) }
+              );
               return { acc, result };
             })();
           });
@@ -541,10 +586,14 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
                 ...acc,
                 roleInfo: {
                   role_name: result.roleInfo?.role_name || acc.username || acc.name || "",
-                  area_id: result.roleInfo?.area_id || "",
+                  area_id: manualAreaIdOverride || result.roleInfo?.area_id || "",
                 },
               });
-              if (result.roleReady) {
+              if (manualAreaIdOverride) {
+                addLog(
+                  `✓ ${acc.username || acc.name || t("noName")} - Cookie 有效，已强制使用手动 area_id`
+                );
+              } else if (result.roleReady) {
                 addLog(`✓ ${acc.username || acc.name || t("noName")} - Cookie 有效`);
               } else {
                 addLog(`✓ ${acc.username || acc.name || t("noName")} - Cookie 有效，area_id 待批次回填`);
@@ -626,6 +675,12 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
 
             if (onlyCookie) {
               diagnosticLog("已取得 game_token，按 Cookie 更新模式判定重登成功，跳过 area_id 验证");
+            } else if (manualAreaIdOverride) {
+              roleInfo.area_id = manualAreaIdOverride;
+              areaSource = "manual";
+              diagnosticLog(
+                `已取得 game_token，强制采用手动 area_id=${manualAreaIdOverride}，跳过玩家信息探测`
+              );
             } else {
               const existingBatchAreaId = getSharedBatchAreaId(authenticatedAccounts);
               if (existingBatchAreaId) {
@@ -657,6 +712,10 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
 
             if (onlyCookie) {
               addLog(`✓ ${acc.username || acc.name || t("noName")} - Cookie 更新成功`);
+            } else if (areaSource === "manual") {
+              addLog(
+                `✓ ${acc.username || roleInfo.role_name || t("noName")} - 登录成功，已强制使用手动 area_id`
+              );
             } else if (areaSource === "batch") {
               addLog(`✓ ${acc.username || roleInfo.role_name || t("noName")} - 登录成功，已使用批次 area_id`);
             } else if (roleInfo.area_id) {
@@ -723,42 +782,53 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
         return;
       }
 
-      // 同一业务批次共享 area_id：仅在本批次实际观测到唯一值时回填。
-      const batchAreaIds = getDistinctBatchAreaIds(authenticatedAccounts);
-      const sharedBatchAreaId = batchAreaIds.length === 1 ? batchAreaIds[0] : "";
-      const pendingAreaAccounts = authenticatedAccounts.filter(
-        (account) => !account.roleInfo?.area_id
-      );
-
-      let crawlableAccounts = authenticatedAccounts.filter(
-        (account) => Boolean(account.roleInfo?.area_id)
-      );
-
-      if (sharedBatchAreaId) {
-        crawlableAccounts = authenticatedAccounts.map((account) => ({
-          ...account,
-          roleInfo: {
-            ...account.roleInfo,
-            role_name:
-              account.roleInfo?.role_name || account.username || account.name || "",
-            area_id: account.roleInfo?.area_id || sharedBatchAreaId,
-          },
-        }));
-        addLog(
-          `批次 area_id 已确认：${pendingAreaAccounts.length} 个账号完成共享回填，${crawlableAccounts.length} 个账号可爬取`
+      let crawlableAccounts;
+      if (manualAreaIdOverride) {
+        crawlableAccounts = applyManualAreaIdOverride(
+          authenticatedAccounts,
+          manualAreaIdOverride
         );
-      } else if (pendingAreaAccounts.length > 0) {
-        const reason = batchAreaIds.length > 1
-          ? "同批次检测到多个 area_id，无法安全回填"
-          : "登录成功，但本批次未取得可共享的 area_id";
-        pendingAreaAccounts.forEach((acc) => {
-          unavailableAccounts.push({ acc, reason });
-        });
         addLog(
-          batchAreaIds.length > 1
-            ? `⚠ 同批次检测到 ${batchAreaIds.length} 个不同的 area_id，未对 ${pendingAreaAccounts.length} 个账号执行回填`
-            : `✗ 本批次所有已登录账号均未取得 area_id，暂时无法开始角色数据爬取`
+          `⚠ 手动 area_id=${manualAreaIdOverride} 已强制应用到 ${crawlableAccounts.length} 个已登录账号`
         );
+      } else {
+        // 同一业务批次共享 area_id：仅在本批次实际观测到唯一值时回填。
+        const batchAreaIds = getDistinctBatchAreaIds(authenticatedAccounts);
+        const sharedBatchAreaId = batchAreaIds.length === 1 ? batchAreaIds[0] : "";
+        const pendingAreaAccounts = authenticatedAccounts.filter(
+          (account) => !account.roleInfo?.area_id
+        );
+
+        crawlableAccounts = authenticatedAccounts.filter(
+          (account) => Boolean(account.roleInfo?.area_id)
+        );
+
+        if (sharedBatchAreaId) {
+          crawlableAccounts = authenticatedAccounts.map((account) => ({
+            ...account,
+            roleInfo: {
+              ...account.roleInfo,
+              role_name:
+                account.roleInfo?.role_name || account.username || account.name || "",
+              area_id: account.roleInfo?.area_id || sharedBatchAreaId,
+            },
+          }));
+          addLog(
+            `批次 area_id 已确认：${pendingAreaAccounts.length} 个账号完成共享回填，${crawlableAccounts.length} 个账号可爬取`
+          );
+        } else if (pendingAreaAccounts.length > 0) {
+          const reason = batchAreaIds.length > 1
+            ? "同批次检测到多个 area_id，无法安全回填"
+            : "登录成功，但本批次未取得可共享的 area_id";
+          pendingAreaAccounts.forEach((acc) => {
+            unavailableAccounts.push({ acc, reason });
+          });
+          addLog(
+            batchAreaIds.length > 1
+              ? `⚠ 同批次检测到 ${batchAreaIds.length} 个不同的 area_id，未对 ${pendingAreaAccounts.length} 个账号执行回填`
+              : `✗ 本批次所有已登录账号均未取得 area_id，暂时无法开始角色数据爬取`
+          );
+        }
       }
 
       // 只为最终可爬取账号注册 Cookie 隔离规则。
@@ -782,28 +852,43 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
         const accountName = acc.roleInfo?.role_name || acc.username || acc.name || t("noName");
         
         try {
-          // 构建数据字典
-          const dict = await loadBaseAccountDict();
-          dict.name = acc.roleInfo.role_name || acc.username || acc.name || "";
-          dict.area_id = acc.roleInfo.area_id;
-          dict.cookie = acc.cookie || "";
-          
-          // 解析 game_uid
-          const gameUidMatch = acc.cookie?.match(/game_uid=([^;]*)/);
-          dict.game_uid = acc.game_uid || (gameUidMatch ? gameUidMatch[1] : "");
-          
-          // 获取前哨信息
-          const { synchroLevel, outpostLevel } = await getOutpostInfoWithAccount(acc, acc.roleInfo.area_id);
-          dict.synchroLevel = synchroLevel;
-          dict.outpostLevel = outpostLevel;
-          
-          // 获取主线进度
-          const prog = await getCampaignProgressWithAccount(acc, acc.roleInfo.area_id, catalogMap);
-          dict.normalProgress = prog.normal || "";
-          dict.hardProgress = prog.hard || "";
-          
-          // 获取角色详情
-          await addCharacterDetailsToDictWithAccount(dict, acc);
+          const { dict } = await crawlWithEmptyDataRetry({
+            crawlOnce: async () => {
+              // 每次重试都重新构建字典并重新爬取该玩家的全部数据。
+              const nextDict = await loadBaseAccountDict();
+              nextDict.name = acc.roleInfo.role_name || acc.username || acc.name || "";
+              nextDict.area_id = acc.roleInfo.area_id;
+              nextDict.cookie = acc.cookie || "";
+
+              // 解析 game_uid
+              const gameUidMatch = acc.cookie?.match(/game_uid=([^;]*)/);
+              nextDict.game_uid = acc.game_uid || (gameUidMatch ? gameUidMatch[1] : "");
+
+              // 获取前哨信息
+              const { synchroLevel, outpostLevel } = await getOutpostInfoWithAccount(acc, acc.roleInfo.area_id);
+              nextDict.synchroLevel = synchroLevel;
+              nextDict.outpostLevel = outpostLevel;
+
+              // 获取主线进度
+              const prog = await getCampaignProgressWithAccount(acc, acc.roleInfo.area_id, catalogMap);
+              nextDict.normalProgress = prog.normal || "";
+              nextDict.hardProgress = prog.hard || "";
+
+              // 获取角色详情，并保留足够的信息区分合法空结果和异常空响应。
+              const characterCrawlSummary =
+                await addCharacterDetailsToDictWithAccount(nextDict, acc);
+
+              return {
+                dict: nextDict,
+                characterCrawlSummary,
+              };
+            },
+            onRetry: ({ nextAttempt, maxAttempts, delayMs, reason }) => {
+              addLog(
+                `⚠ ${accountName} - 检测到异常空数据：${reason}，${delayMs}ms 后重新爬取（${nextAttempt}/${maxAttempts}）`
+              );
+            },
+          });
           
           // 计算 AEL 分
           computeAELForDict(dict);

@@ -30,6 +30,7 @@ import {
 export default function App() {
   // ========== 标签页状态 ==========
   const [tab, setTab] = useState("crawler");
+  const [manualAreaId, setManualAreaId] = useState("");
   
   const handleTabChange = useCallback((event, newTab) => {
     if (newTab !== null) {
@@ -123,6 +124,8 @@ export default function App() {
               collapseEquipDetails={settings.collapseEquipDetails}
               activateTab={settings.activateTab}
               server={settings.server}
+              manualAreaId={manualAreaId}
+              onManualAreaIdChange={setManualAreaId}
               toggleSaveZip={settings.toggleSaveZip}
               toggleExportJson={settings.toggleExportJson}
               toggleEquipDetail={settings.toggleEquipDetail}
