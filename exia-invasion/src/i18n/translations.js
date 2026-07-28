@@ -29,8 +29,8 @@ const TRANSLATIONS = {
     server: "服务器",
     hmt: "香港/澳门/台湾",
     global: "日本/韩国/北美/东南亚/全球",
-    manualAreaId: "强制 area_id（仅本次会话）",
-    manualAreaIdHelp: "填写后将跳过自动区域和昵称探测，并对本批账号强制使用该值；重开侧栏后清空。",
+    manualAreaId: "手动指定 area_id（仅本次会话）",
+    manualAreaIdHelp: "可留空，程序会自动获取。填写后将跳过自动区域和昵称探测，并对本批账号强制使用该值；重开侧栏后清空。仅建议出现area_id报错时手动指定。参考值：北美: 82; 港澳台：91。 其它服务器自行查询之前成功的json文件底部",
     manualAreaIdInvalid: "请输入大于 0 的整数 area_id。",
     langLabel: "中文",
     // Auth
