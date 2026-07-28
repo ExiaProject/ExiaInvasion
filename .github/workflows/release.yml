@@ -1,0 +1,191 @@
+name: Release browser extension
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: exia-invasion/.nvmrc
+          cache: npm
+          cache-dependency-path: exia-invasion/package-lock.json
+
+      - name: Validate release version
+        id: version
+        working-directory: exia-invasion
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tags must match vMAJOR.MINOR.PATCH; received '$TAG_NAME'."
+            exit 1
+          fi
+
+          VERSION="${TAG_NAME#v}"
+          IFS="." read -r MAJOR MINOR PATCH <<< "$VERSION"
+          for VERSION_PART in "$MAJOR" "$MINOR" "$PATCH"; do
+            if (( VERSION_PART > 65535 )); then
+              echo "::error::Each extension version part must be no greater than 65535; received '$TAG_NAME'."
+              exit 1
+            fi
+          done
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          EXPECTED_VERSION="$VERSION" node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
+          const expected = process.env.EXPECTED_VERSION;
+          const packageJson = readJson("package.json");
+          const packageLock = readJson("package-lock.json");
+          const manifest = readJson("public/manifest.json");
+
+          const versions = [
+            ["package.json", packageJson.version],
+            ["package-lock.json", packageLock.version],
+            ['package-lock.json packages[""]', packageLock.packages?.[""]?.version],
+            ["public/manifest.json", manifest.version],
+          ];
+          const mismatches = versions.filter(([, actual]) => actual !== expected);
+
+          if (mismatches.length > 0) {
+            console.error(`Expected every source version to equal ${expected}:`);
+            for (const [location, actual] of mismatches) {
+              console.error(`- ${location}: ${actual ?? "<missing>"}`);
+            }
+            process.exit(1);
+          }
+
+          console.log(`Validated release version ${expected}.`);
+          NODE
+
+      - name: Install dependencies
+        working-directory: exia-invasion
+        run: npm ci
+
+      - name: Lint
+        working-directory: exia-invasion
+        run: npm run lint
+
+      - name: Test
+        working-directory: exia-invasion
+        run: node --test tests/*.test.mjs
+
+      - name: Build
+        working-directory: exia-invasion
+        run: npm run build
+
+      - name: Verify build output
+        working-directory: exia-invasion
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { existsSync, readFileSync, readdirSync } from "node:fs";
+
+          const expected = process.env.EXPECTED_VERSION;
+          const manifest = JSON.parse(readFileSync("dist/manifest.json", "utf8"));
+          const requiredFiles = [
+            "dist/manifest.json",
+            "dist/index.html",
+            "dist/management.html",
+            "dist/background.js",
+            "dist/content-auth.js",
+            "dist/cubes.json",
+            "dist/images/icon-16.png",
+            "dist/images/icon-32.png",
+            "dist/images/icon-48.png",
+            "dist/images/icon-128.png",
+          ];
+          const missingFiles = requiredFiles.filter((path) => !existsSync(path));
+          const javascriptAssets = readdirSync("dist/assets").filter((name) => name.endsWith(".js"));
+
+          if (manifest.version !== expected) {
+            console.error(`Built manifest version ${manifest.version} does not match ${expected}.`);
+            process.exit(1);
+          }
+          if (missingFiles.length > 0) {
+            console.error(`Build output is missing: ${missingFiles.join(", ")}`);
+            process.exit(1);
+          }
+          if (javascriptAssets.length === 0) {
+            console.error("Build output does not contain a JavaScript bundle.");
+            process.exit(1);
+          }
+
+          console.log(`Verified build output for version ${expected}.`);
+          NODE
+
+      - name: Package extension
+        id: package
+        working-directory: exia-invasion
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          ARCHIVE="$RUNNER_TEMP/ExiaInvasion.${TAG_NAME}.zip"
+          (
+            cd dist
+            zip -r "$ARCHIVE" .
+          )
+
+          ARCHIVE_LISTING="$RUNNER_TEMP/archive-listing.txt"
+          unzip -Z1 "$ARCHIVE" > "$ARCHIVE_LISTING"
+
+          if grep -Eq '^dist(/|$)' "$ARCHIVE_LISTING"; then
+            echo "::error::The release archive must not contain a top-level dist directory."
+            exit 1
+          fi
+
+          for REQUIRED_PATH in manifest.json index.html management.html background.js; do
+            if ! grep -Fxq "$REQUIRED_PATH" "$ARCHIVE_LISTING"; then
+              echo "::error::The release archive is missing '$REQUIRED_PATH'."
+              exit 1
+            fi
+          done
+
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "Created $(basename "$ARCHIVE")."
+
+      - name: Ensure release does not already exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release '$TAG_NAME' already exists; refusing to overwrite it."
+            exit 1
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          gh release create "$TAG_NAME" "$ARCHIVE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "$TAG_NAME" \
+            --generate-notes
