@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node --test tests/*.test.mjs",
+    "sync:level-stats": "node scripts/sync-level-stats.mjs",
     "preversion": "node scripts/version-git.mjs pre && npm run lint && npm test",
     "version": "node scripts/sync-version.mjs && git add package.json package-lock.json public/manifest.json",
     "postversion": "node scripts/version-git.mjs post"

@@ -10,10 +10,10 @@ import {
   Snackbar,
   Alert,
   ToggleButtonGroup,
-  ToggleButton,
-  Button
+  ToggleButton
 } from "@mui/material";
 import TRANSLATIONS from "./i18n/translations.js";
+import { initializeLevelStats } from "./services/levelStats.js";
 import {
   useAuth,
   useSettings,
@@ -31,6 +31,12 @@ export default function App() {
   // ========== 标签页状态 ==========
   const [tab, setTab] = useState("crawler");
   const [manualAreaId, setManualAreaId] = useState("");
+
+  useEffect(() => {
+    initializeLevelStats().catch((error) => {
+      console.warn("共享等级曲线初始化失败:", error);
+    });
+  }, []);
   
   const handleTabChange = useCallback((event, newTab) => {
     if (newTab !== null) {
@@ -100,6 +106,9 @@ export default function App() {
         handleLogoutClick={auth.handleLogoutClick}
         openLoginDialog={auth.openLoginDialog}
         showCloudSyncUi={settings.showCloudSyncUi}
+        updateAvailable={updateAvailable}
+        latestVersion={latestVersion}
+        releaseUrl={releaseUrl}
       />
       
       <Container sx={{ mt: 2, width: 340, pb: 1 }}>
@@ -165,19 +174,6 @@ export default function App() {
             {displayLogs.join("\n")}
           </Paper>
 
-          {updateAvailable && (
-            <Alert
-              severity="error"
-              sx={{ bgcolor: 'rgba(211, 47, 47, 0.2)' }}
-              action={
-                <Button color="inherit" size="small" href={releaseUrl} target="_blank">
-                  {t("update")}
-                </Button>
-              }
-            >
-              {t("updateAvailable").replace("{version}", latestVersion)}
-            </Alert>
-          )}
         </Stack>
       </Container>
 

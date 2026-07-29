@@ -33,6 +33,7 @@ import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
 import { TableVirtuoso } from "react-virtuoso";
 import InteractiveSelector from "../common/InteractiveSelector";
+import { resolveShowStats, toggleShowStat } from "../../utils/showStats.js";
 
 
 const VirtuosoScroller = forwardRef((props, ref) => (
@@ -137,7 +138,9 @@ const CharacterTabContent = ({
   getPriorityColor,
   updateCharacterShowStats,
   basicStatKeys,
+  simulatedStatKeys,
   showStatsConfigMarker,
+  simulatedStatsConfigMarker,
   nikkeNameMinWidthPx,
   nikkePriorityWidthPx,
   nikkeDragHandleWidthPx,
@@ -160,7 +163,18 @@ const CharacterTabContent = ({
     (typeof nikkeNameMinWidthPx === "number" ? nikkeNameMinWidthPx : 0) +
     (typeof nikkePriorityWidthPx === "number" ? nikkePriorityWidthPx : 0) +
     toggleMinWidth *
-      (1 + (basicStatKeys?.length || 0) + (equipStatKeys?.length || 0));
+      (
+        1
+        + (basicStatKeys?.length || 0)
+        + (simulatedStatKeys?.length || 0)
+        + (equipStatKeys?.length || 0)
+      );
+
+  const simulatedStatLabels = [
+    t("simulatedHp"),
+    t("simulatedAtk"),
+    t("simulatedDef"),
+  ];
 
   const scrollbarReservePx = 16;
 
@@ -535,6 +549,11 @@ const CharacterTabContent = ({
                       <TableCell sx={toggleHeaderCellSx}>
                         {t("burst")}
                       </TableCell>
+                      {simulatedStatKeys.map((key, idx) => (
+                        <TableCell key={key} sx={toggleHeaderCellSx}>
+                          {simulatedStatLabels[idx]}
+                        </TableCell>
+                      ))}
                       {equipStatKeys.map((key, idx) => (
                         <TableCell key={key} sx={toggleHeaderCellSx}>
                           {equipStatLabels[idx]}
@@ -812,6 +831,42 @@ const CharacterTabContent = ({
                           </>
                         );
                       })()}
+                      {simulatedStatKeys.map((key, simulatedIndex) => {
+                        const resolved = resolveShowStats(charData.showStats);
+                        return (
+                          <TableCell key={key} sx={toggleCellSx}>
+                            <Checkbox
+                              size="small"
+                              checked={resolved.effective.includes(key)}
+                              inputProps={{
+                                "aria-label":
+                                  simulatedStatLabels[simulatedIndex] || key,
+                              }}
+                              onChange={(event) => {
+                                const nextStats = toggleShowStat(
+                                  charData.showStats,
+                                  key,
+                                  event.target.checked,
+                                );
+                                if (
+                                  !nextStats.includes(
+                                    simulatedStatsConfigMarker,
+                                  )
+                                ) {
+                                  nextStats.unshift(
+                                    simulatedStatsConfigMarker,
+                                  );
+                                }
+                                updateCharacterShowStats(
+                                  element,
+                                  index,
+                                  nextStats,
+                                );
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      })}
                       {equipStatKeys.map((key) => (
                         <TableCell key={key} sx={toggleCellSx}>
                           <Checkbox
