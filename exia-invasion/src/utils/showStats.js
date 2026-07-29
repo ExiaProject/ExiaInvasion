@@ -12,6 +12,9 @@ export const SIMULATED_STAT_KEYS = Object.freeze([
   "simulated_atk",
   "simulated_def",
 ]);
+export const DEFAULT_SIMULATED_STAT_KEYS = Object.freeze(
+  SIMULATED_STAT_KEYS.filter((key) => key !== "simulated_def"),
+);
 
 export const SHOW_STATS_CONFIG_MARKER = "__showStatsConfigured";
 export const SIMULATED_STATS_CONFIG_MARKER = "__simulatedStatsConfigured";
@@ -32,7 +35,7 @@ export const resolveShowStats = (rawShowStats) => {
     BASIC_STAT_KEYS.forEach((key) => effective.add(key));
   }
   if (!simulatedConfigured) {
-    SIMULATED_STAT_KEYS.forEach((key) => effective.add(key));
+    DEFAULT_SIMULATED_STAT_KEYS.forEach((key) => effective.add(key));
   }
 
   return {
@@ -55,7 +58,7 @@ export const toggleShowStat = (rawShowStats, key, checked) => {
     SIMULATED_STAT_KEYS.includes(key)
     && !base.includes(SIMULATED_STATS_CONFIG_MARKER)
   ) {
-    base.push(SIMULATED_STATS_CONFIG_MARKER, ...SIMULATED_STAT_KEYS);
+    base.push(SIMULATED_STATS_CONFIG_MARKER, ...DEFAULT_SIMULATED_STAT_KEYS);
   }
 
   base = uniqueStrings(base);
@@ -64,4 +67,3 @@ export const toggleShowStat = (rawShowStats, key, checked) => {
     : base.filter((value) => value !== key);
   return uniqueStrings(next);
 };
-

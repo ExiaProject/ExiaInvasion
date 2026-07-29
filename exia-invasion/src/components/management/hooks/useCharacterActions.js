@@ -3,11 +3,11 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { setCharacters as persistCharacters } from "../../../services/storage.js";
+import { DEFAULT_SIMULATED_STAT_KEYS } from "../../../utils/showStats.js";
 import {
   SHOW_STATS_CONFIG_MARKER,
   SIMULATED_STATS_CONFIG_MARKER,
   basicStatKeys,
-  simulatedStatKeys,
   equipStatKeys,
 } from "../constants.js";
 import { downloadFile, selectFile } from "../utils.js";
@@ -165,7 +165,7 @@ export function useCharacterActions({
           SHOW_STATS_CONFIG_MARKER,
           SIMULATED_STATS_CONFIG_MARKER,
           ...basicStatKeys,
-          ...simulatedStatKeys,
+          ...DEFAULT_SIMULATED_STAT_KEYS,
           "AtkElemLbScore",
           ...equipStatKeys,
         ]

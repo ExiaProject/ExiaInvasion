@@ -101,7 +101,7 @@ test("Excel adds three simulated columns and nine research columns in the fixed 
   assert.equal(sheet.getCell(4, 10).value, 333);
   assert.equal(sheet.getColumn(8).hidden, false);
   assert.equal(sheet.getColumn(9).hidden, false);
-  assert.equal(sheet.getColumn(10).hidden, false);
+  assert.equal(sheet.getColumn(10).hidden, true);
 
   // 20 character columns => cube X, research Y:AG.
   assert.equal(sheet.getCell("Y1").value, "研究等级");
@@ -115,13 +115,15 @@ test("Excel adds three simulated columns and nine research columns in the fixed 
   assert.ok(sheet.model.merges.includes("Y1:AG1"));
 });
 
-test("old templates default simulated columns on, while the independent marker can hide one", async () => {
+test("unconfigured templates hide simulated defense, while explicit settings are preserved", async () => {
   const oldWorkbook = await loadWorkbook(createDict([
     SHOW_STATS_CONFIG_MARKER,
     ...BASIC_STAT_KEYS,
   ]));
   const oldSheet = oldWorkbook.worksheets[0];
+  assert.equal(oldSheet.getColumn(8).hidden, false);
   assert.equal(oldSheet.getColumn(9).hidden, false);
+  assert.equal(oldSheet.getColumn(10).hidden, true);
 
   const configuredWorkbook = await loadWorkbook(createDict([
     SHOW_STATS_CONFIG_MARKER,
@@ -149,4 +151,3 @@ test("null simulated values and research values export as blank cells", async ()
   assert.equal(sheet.getCell(4, 9).value, null);
   assert.equal(sheet.getCell(4, 30).value, null);
 });
-
