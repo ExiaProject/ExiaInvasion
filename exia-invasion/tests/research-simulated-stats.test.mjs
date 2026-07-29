@@ -4,6 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   calculateCharacterSimulatedStats,
+  calculateSimulatedStatsForDict,
   normalizeSsrLimitBreak,
   selectHighestCube,
 } from "../src/utils/simulatedStats.js";
@@ -51,6 +52,33 @@ const makeLevelStats = () => ({
     },
   },
 });
+
+const makeTwoLevelStats = () => {
+  const levelStats = makeLevelStats();
+  levelStats.curves.attacker = {
+    hp: [101, 1001],
+    atk: [201, 2001],
+    def: [301, 3001],
+  };
+  levelStats.curves.supporter = {
+    hp: [102, 1002],
+    atk: [202, 2002],
+    def: [302, 3002],
+  };
+  levelStats.curves.defender = {
+    hp: [103, 1003],
+    atk: [203, 2003],
+    defByWeapon: {
+      RL: [303, 3003],
+      AR: [304, 3004],
+      SMG: [305, 3005],
+      SG: [306, 3006],
+      SR: [307, 3007],
+      MG: [308, 3008],
+    },
+  };
+  return levelStats;
+};
 
 const researchTable = {
   records: [
@@ -101,6 +129,7 @@ const baseInput = {
     original_rare: "SSR",
   },
   userCharacter: { lv: 1, grade: 3, core: 2 },
+  synchroLevel: 1,
   characterDetail: {
     attractive_lv: 1,
     favorite_item_tid: 7001,
@@ -183,6 +212,69 @@ test("formula preserves official floor/round order and rounds each equipment ite
   assert.equal(result.simulated_hp, 163);
   assert.equal(result.simulated_atk, 270);
   assert.equal(result.simulated_def, 377);
+});
+
+test("formula always uses synchronizer level regardless of character level", () => {
+  const result = calculateCharacterSimulatedStats({
+    ...baseInput,
+    levelStats: makeTwoLevelStats(),
+    synchroLevel: 2,
+    userCharacter: { ...baseInput.userCharacter, lv: 400 },
+  });
+
+  assert.deepEqual(result, {
+    simulated_hp: 1155,
+    simulated_atk: 2255,
+    simulated_def: 3354,
+  });
+});
+
+test("dict calculation forwards its synchronizer level to every character", async () => {
+  const outputCharacter = { name_code: 101 };
+  const dict = {
+    synchroLevel: 2,
+    cubes: [],
+    researchLevels: {
+      ...createEmptyResearchLevels(),
+      general: 0,
+      attacker: 0,
+      missilis: 0,
+    },
+    elements: { Electronic: [outputCharacter] },
+  };
+
+  const summary = await calculateSimulatedStatsForDict({
+    dict,
+    userCharacters: [{ name_code: 101, lv: 1, grade: 0, core: 0 }],
+    characterDetails: [{
+      name_code: 101,
+      attractive_lv: 0,
+      favorite_item_tid: 0,
+      raw_equipments: [],
+    }],
+    nikkeDirectory: [{
+      name_code: 101,
+      class: "Attacker",
+      corporation: "MISSILIS",
+      weapon_type: "RL",
+    }],
+    levelStats: makeTwoLevelStats(),
+    staticDataLoader: {
+      loadBase: async () => ({
+        researchTable,
+        attractiveTable,
+        equipmentTable,
+      }),
+    },
+  });
+
+  assert.deepEqual(summary, { calculatedCount: 1, failures: [] });
+  assert.deepEqual(outputCharacter, {
+    name_code: 101,
+    simulated_hp: 1001,
+    simulated_atk: 2001,
+    simulated_def: 3001,
+  });
 });
 
 test("SR/R metadata still uses the approved shared SSR baseline", () => {

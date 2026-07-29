@@ -248,6 +248,7 @@ export const calculateCharacterSimulatedStats = ({
   levelStats,
   metadata,
   userCharacter,
+  synchroLevel,
   characterDetail,
   researchLevels,
   researchTable,
@@ -274,8 +275,8 @@ export const calculateCharacterSimulatedStats = ({
     throw new SimulationInputError("角色武器类型缺失");
   }
 
-  const level = requireNonNegativeInteger(userCharacter.lv, "角色等级");
-  if (level < 1) throw new SimulationInputError("角色等级必须大于 0");
+  const level = requireNonNegativeInteger(synchroLevel, "同步器等级");
+  if (level < 1) throw new SimulationInputError("同步器等级必须大于 0");
   const { grade, core } = normalizeSsrLimitBreak(userCharacter);
   const researchRows = getRequiredResearchRows(
     researchTable,
@@ -531,6 +532,7 @@ export const calculateSimulatedStatsForDict = async ({
         levelStats,
         metadata: target.metadata,
         userCharacter: target.userCharacter,
+        synchroLevel: dict.synchroLevel,
         characterDetail: target.characterDetail,
         researchLevels: dict.researchLevels,
         ...baseResources,
