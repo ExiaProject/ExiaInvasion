@@ -17,6 +17,7 @@ import {
 } from "@mui/material";
 import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
+import NewReleasesOutlinedIcon from "@mui/icons-material/NewReleasesOutlined";
 import { AVATAR_URL } from "./constants.js";
 
 const DiscordIcon = (props) => (
@@ -36,8 +37,12 @@ const AppHeader = ({
   handleLogoutClick,
   openLoginDialog,
   showCloudSyncUi,
+  updateAvailable,
+  latestVersion,
+  releaseUrl,
 }) => {
   const iconUrl = useMemo(() => chrome.runtime.getURL("images/icon-128.png"), []);
+  const updateMessage = t("updateAvailable").replace("{version}", latestVersion);
 
   return (
     <AppBar position="sticky">
@@ -49,9 +54,38 @@ const AppHeader = ({
           height={32}
           style={{ width: 32, height: 32, marginRight: 8 }}
         />
-        <Typography variant="h6" sx={{ flexGrow: 1 }}>
-          ExiaInvasion
-        </Typography>
+        <Box sx={{ display: "flex", alignItems: "center", flexGrow: 1, minWidth: 0 }}>
+          <Typography variant="h6" sx={{ flexShrink: 0 }}>
+            ExiaInvasion
+          </Typography>
+          {updateAvailable && (
+            <Button
+              variant="contained"
+              color="error"
+              size="small"
+              disableElevation
+              href={releaseUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={updateMessage}
+              aria-label={updateMessage}
+              sx={{
+                ml: 0.75,
+                minWidth: 0,
+                flexShrink: 0,
+                px: 0.5,
+                py: 0.25,
+                fontSize: 10.5,
+                lineHeight: 1.25,
+                whiteSpace: "nowrap",
+                textTransform: "none",
+              }}
+            >
+              <NewReleasesOutlinedIcon sx={{ mr: 0.25, fontSize: 13 }} />
+              {latestVersion}
+            </Button>
+          )}
+        </Box>
         {showCloudSyncUi && (
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {authUsername ? (
