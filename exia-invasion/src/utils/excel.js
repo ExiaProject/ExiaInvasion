@@ -4,7 +4,13 @@ import ExcelJS from "exceljs";
 import { computeAELScore, isUnowned, getEquipSumStats } from './ael.js';
 import TRANSLATIONS from '../i18n/translations.js';
 import { getNikkeAvatarUrl } from './nikkeAvatar.js';
-import { fetchAndCacheNikkeDirectory, getCachedNikkeDirectory } from '../services/api.js';
+import { ensureNikkeDirectory } from '../services/api.js';
+import {
+  BASIC_STAT_KEYS,
+  SIMULATED_STAT_KEYS,
+  resolveShowStats,
+} from './showStats.js';
+import { RESEARCH_LEVEL_DEFINITIONS } from './researchLevels.js';
 
 // 边框样式定义
 const mediumSide = { style: "medium", color: { argb: "FF000000" } };
@@ -136,16 +142,9 @@ export const saveDictToExcel = async (dict, lang = "en") => {  const t = (key) =
   // 角色头像需要 resource_id：优先读缓存目录，缺失则在线拉取一次
   let nikkeDir = [];
   try {
-    nikkeDir = await getCachedNikkeDirectory();
+    nikkeDir = await ensureNikkeDirectory();
   } catch {
     nikkeDir = [];
-  }
-  if (!Array.isArray(nikkeDir) || nikkeDir.length === 0) {
-    try {
-      nikkeDir = await fetchAndCacheNikkeDirectory();
-    } catch {
-      nikkeDir = [];
-    }
   }
   const resourceIdMap = new Map();
   if (Array.isArray(nikkeDir)) {
@@ -195,11 +194,10 @@ export const saveDictToExcel = async (dict, lang = "en") => {  const t = (key) =
   setOuterBorder(ws,4,1,8,3,mediumSide);
   setVerticalBorder(ws, 1, 8, 3, mediumSide, "left");
     /* ========== 角色信息区 ========== */
-  // 角色块宽度：与属性列一一对应（第1行=名称合并；第2行=头像合并）
-  const widthPerChar = 17;
   // 将 AEL 列移至人物块最右侧
   const propertyKeys = [
     "limit_break","skill1_level","skill2_level","skill_burst_level",
+    "simulated_hp","simulated_atk","simulated_def",
     "item_rare","item_level",null,
     "IncElementDmg","StatAtk","StatAmmoLoad","StatChargeTime","StatChargeDamage",
     "StatCritical","StatCriticalDamage","StatAccuracyCircle","StatDef",
@@ -207,11 +205,15 @@ export const saveDictToExcel = async (dict, lang = "en") => {  const t = (key) =
   ];
 
   const propertyLabels = [
-    t("limitBreak"), t("skill1"), t("skill2"), t("burst"), t("item"), null, t("t10"),
+    t("limitBreak"), t("skill1"), t("skill2"), t("burst"),
+    t("simulatedHp"), t("simulatedAtk"), t("simulatedDef"),
+    t("item"), null, t("t10"),
     t("elementAdvantage"), t("attack"), t("ammo"), t("chargeSpeed"), t("chargeDamage"),
     t("critical"), t("criticalDamage"), t("hit"), t("defense"),
     t("atkElemLbScore")
   ];
+  // 角色块宽度由属性键唯一推导，新增列不会再破坏合并和偏移。
+  const widthPerChar = propertyKeys.length;
 
   // 动态索引，避免硬编码
   const statsStartIdx = propertyKeys.indexOf("IncElementDmg"); // 词条统计列起始索引
@@ -305,6 +307,9 @@ export const saveDictToExcel = async (dict, lang = "en") => {  const t = (key) =
         skill1_level,
         skill2_level,
         skill_burst_level,
+        simulated_hp,
+        simulated_atk,
+        simulated_def,
         item_rare = "",
         item_level,
         equipments = {}      
@@ -313,19 +318,28 @@ export const saveDictToExcel = async (dict, lang = "en") => {  const t = (key) =
       // 统一复用公共判定逻辑
       const unowned = isUnowned(charInfo);
       
-      // 填入基础数据（AEL 已移至最右侧，基础从首列开始）
-      let baseOffset = 0;
+      // 填入基础与模拟数据（所有偏移均从 propertyKeys 动态查找）
       // AEL列保持合并但不写占位值；仅在有数据时回填分数
       if (!unowned) {
-        ws.getCell(4,baseCol+baseOffset).value = getLimitBreakStr(limit_break);
-        if (typeof skill1_level !== 'undefined') ws.getCell(4,baseCol+baseOffset+1).value = skill1_level;
-        if (typeof skill2_level !== 'undefined') ws.getCell(4,baseCol+baseOffset+2).value = skill2_level;
-        if (typeof skill_burst_level !== 'undefined') ws.getCell(4,baseCol+baseOffset+3).value = skill_burst_level;
+        const basicValues = {
+          limit_break: getLimitBreakStr(limit_break),
+          skill1_level,
+          skill2_level,
+          skill_burst_level,
+          simulated_hp,
+          simulated_atk,
+          simulated_def,
+        };
+        Object.entries(basicValues).forEach(([key, value]) => {
+          const index = propertyKeys.indexOf(key);
+          if (index < 0 || value === undefined || value === null) return;
+          ws.getCell(4, baseCol + index).value = value;
+        });
         // 仅当存在珍藏品时填写稀有度与等级，避免无珍藏品时出现等级0
         if (item_rare) {
-          ws.getCell(4,baseCol+baseOffset+4).value = item_rare;
+          ws.getCell(4,baseCol+propertyKeys.indexOf("item_rare")).value = item_rare;
           if (typeof item_level !== 'undefined') {
-            ws.getCell(4,baseCol+baseOffset+5).value = getItemLevelStr(item_rare,item_level);
+            ws.getCell(4,baseCol+itemLevelIdx).value = getItemLevelStr(item_rare,item_level);
           }
         }
       }
@@ -453,29 +467,34 @@ export const saveDictToExcel = async (dict, lang = "en") => {  const t = (key) =
       // ===== 按角色配置隐藏列（showStats） =====
       // 兼容旧数据：若 showStats 缺失则全部显示
       if (Array.isArray(charInfo.showStats)) {
-        const rawShowStats = charInfo.showStats;
-        const configured = rawShowStats.includes("__showStatsConfigured");
-        const showStats = rawShowStats.filter(
-          (k) => typeof k === "string" && !k.startsWith("__")
-        );
-
-        // 旧数据（未配置）默认基础列全显示
-        const effectiveStats = configured
-          ? showStats
-          : [...showStats, "limit_break", "skill1_level", "skill2_level", "skill_burst_level"];
+        const {
+          basicsConfigured,
+          simulatedConfigured,
+          explicitlyVisible,
+          effective: effectiveStats,
+        } = resolveShowStats(charInfo.showStats);
 
         // 若一个勾也没打：整个人物块完全折叠
-        // 仅当“用户已配置且确实全不勾”时才折叠；否则视为旧数据默认不折叠
-        if (configured && showStats.length === 0) {
+        // 两组旧配置均有默认列，只有都已配置且确实全不勾时才折叠。
+        if (
+          basicsConfigured
+          && simulatedConfigured
+          && explicitlyVisible.length === 0
+        ) {
           for (let i = 0; i < widthPerChar; i++) {
             ws.getColumn(colCursor + i).hidden = true;
           }
         } else {
-          // 基础列（突破/技能）：兼容旧数据（若未出现任何基础 key，则默认全显示）
-          const basicKeys = ["limit_break", "skill1_level", "skill2_level", "skill_burst_level"];
-          const hasAnyBasic = basicKeys.some((k) => effectiveStats.includes(k));
-          for (let i = 0; i < basicKeys.length; i++) {
-            ws.getColumn(baseCol + i).hidden = hasAnyBasic ? !effectiveStats.includes(basicKeys[i]) : false;
+          // 基础列与模拟属性都由各自的兼容标记独立控制。
+          for (const key of BASIC_STAT_KEYS) {
+            const index = propertyKeys.indexOf(key);
+            ws.getColumn(baseCol + index).hidden =
+              !effectiveStats.includes(key);
+          }
+          for (const key of SIMULATED_STAT_KEYS) {
+            const index = propertyKeys.indexOf(key);
+            ws.getColumn(baseCol + index).hidden =
+              !effectiveStats.includes(key);
           }
 
           const aelIdx = propertyKeys.indexOf("AtkElemLbScore");
@@ -542,8 +561,73 @@ export const saveDictToExcel = async (dict, lang = "en") => {  const t = (key) =
     setOuterBorder(ws,4,cubeStartCol,8,cubeStartCol+cubes.length-1,mediumSide);
   }
 
-  /* ========== 前哨基地等级列（放在魔方区右侧） ========== */
-  const outpostCol = cubeStartCol + (cubes.length > 0 ? cubes.length : 0);
+  /* ========== 研究等级区（固定九列，位于魔方与其它之间） ========== */
+  const researchStartCol =
+    cubeStartCol + (cubes.length > 0 ? cubes.length : 0);
+  const researchLabelKeys = {
+    general: "researchGeneral",
+    attacker: "researchAttacker",
+    defender: "researchDefender",
+    supporter: "researchSupporter",
+    elysion: "researchElysion",
+    missilis: "researchMissilis",
+    tetra: "researchTetra",
+    pilgrim: "researchPilgrim",
+    abnormal: "researchAbnormal",
+  };
+  const researchEndCol =
+    researchStartCol + RESEARCH_LEVEL_DEFINITIONS.length - 1;
+  ws.mergeCells(1, researchStartCol, 1, researchEndCol);
+  const researchHeader = ws.getCell(1, researchStartCol);
+  researchHeader.value = t("researchLevels");
+  researchHeader.alignment = { horizontal: "center", vertical: "middle" };
+  researchHeader.font = { bold: true };
+  setOuterBorder(
+    ws,
+    1,
+    researchStartCol,
+    1,
+    researchEndCol,
+    mediumSide,
+  );
+
+  RESEARCH_LEVEL_DEFINITIONS.forEach(({ key }, index) => {
+    const col = researchStartCol + index;
+    ws.mergeCells(2, col, 3, col);
+    const labelCell = ws.getCell(2, col);
+    labelCell.value = t(researchLabelKeys[key]);
+    labelCell.alignment = { horizontal: "center", vertical: "middle" };
+    labelCell.font = { bold: true };
+
+    ws.mergeCells(4, col, 8, col);
+    const valueCell = ws.getCell(4, col);
+    const value = dict?.researchLevels?.[key];
+    valueCell.value = Number.isFinite(value) ? value : null;
+    valueCell.alignment = { horizontal: "center", vertical: "middle" };
+
+    if (index < RESEARCH_LEVEL_DEFINITIONS.length - 1) {
+      setVerticalBorder(ws, 2, 8, col, thinSide, "right");
+    }
+  });
+  setOuterBorder(
+    ws,
+    2,
+    researchStartCol,
+    3,
+    researchEndCol,
+    mediumSide,
+  );
+  setOuterBorder(
+    ws,
+    4,
+    researchStartCol,
+    8,
+    researchEndCol,
+    mediumSide,
+  );
+
+  /* ========== 前哨基地等级列（放在研究区右侧） ========== */
+  const outpostCol = researchEndCol + 1;
 
   ws.mergeCells(2,outpostCol,3,outpostCol);
   const outLabel = ws.getCell(2,outpostCol);
@@ -631,6 +715,9 @@ export const saveDictToExcel = async (dict, lang = "en") => {  const t = (key) =
   const cubeCount = Array.isArray(dict.cubes) ? dict.cubes.length : 0;
   for(let col=cubeStartCol; col<cubeStartCol+cubeCount; ++col){
     ws.getColumn(col).width = cubeWidth;
+  }
+  for (let col = researchStartCol; col <= researchEndCol; col += 1) {
+    ws.getColumn(col).width = lang === "en" ? 12 : 10;
   }
   // Outpost/Normal/Hard 列宽
   ws.getColumn(outpostCol).width = cubeWidth;

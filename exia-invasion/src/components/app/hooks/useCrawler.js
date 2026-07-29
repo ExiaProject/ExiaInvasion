@@ -5,6 +5,8 @@ import { useState, useCallback } from "react";
 import JSZip from "jszip";
 import saveDictToExcel from "../../../utils/excel.js";
 import { computeAELForDict } from "../../../utils/ael.js";
+import { calculateSimulatedStatsForDict } from "../../../utils/simulatedStats.js";
+import { getLevelStatsForCalculation } from "../../../services/levelStats.js";
 import {
   applyManualAreaIdOverride,
   parseManualAreaId,
@@ -12,7 +14,7 @@ import {
 import { createUniqueExportFileName } from "../../../utils/exportFilenames.js";
 import { getAccounts, setAccounts, getCharacters } from "../../../services/storage.js";
 import { applyCookieStr, clearSiteCookies, getCurrentCookies } from "../../../services/cookie.js";
-import { loadBaseAccountDict, getRoleName, prefetchMainlineCatalog, validateCookieWithAccount, getOutpostInfoWithAccount, getCampaignProgressWithAccount, getUserCharactersWithAccount, getCharacterDetailsWithAccount } from "../../../services/api.js";
+import { loadBaseAccountDict, getRoleName, prefetchMainlineCatalog, validateCookieWithAccount, getOutpostInfoWithAccount, getCampaignProgressWithAccount, getUserCharactersWithAccount, getCharacterDetailsWithAccount, ensureNikkeDirectory } from "../../../services/api.js";
 import { registerCookieRules, unregisterAllRules } from "../../../services/requestInterceptor.js";
 import { parseGameUidFromCookie, cookieArrToStr } from "../utils.js";
 import { BATCH_SIZE, STAGGER_DELAY } from "../constants.js";
@@ -375,6 +377,8 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
       requestedCharacterCount: 0,
       receivedDetailCount: 0,
       populatedCharacterCount: 0,
+      simulatedStatsCount: 0,
+      simulatedStatsFailures: [],
     };
     if (uniqueNameCodes.length === 0) return crawlSummary;
     
@@ -432,7 +436,10 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
             
             const userChar = userCharMap[detailKey];
             if (userChar) {
-              details.limit_break = { grade: userChar.grade, core: userChar.core };
+              details.limit_break = {
+                grade: userChar.grade ?? 0,
+                core: userChar.core ?? 0,
+              };
             } else if (charDetail) {
               details.limit_break = { grade: charDetail.limitBreak?.grade || 0, core: charDetail.limitBreak?.core || 0 };
             } else {
@@ -451,6 +458,31 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
         });
       });
       crawlSummary.populatedCharacterCount = populatedNameCodes.size;
+
+      // 属性计算失败不会触发账号接口重试；保留角色详情并将模拟值留空。
+      try {
+        const [nikkeDirectory, levelStats] = await Promise.all([
+          ensureNikkeDirectory(),
+          getLevelStatsForCalculation(),
+        ]);
+        const simulated = await calculateSimulatedStatsForDict({
+          dict,
+          userCharacters,
+          characterDetails,
+          nikkeDirectory,
+          levelStats,
+        });
+        crawlSummary.simulatedStatsCount = simulated.calculatedCount;
+        crawlSummary.simulatedStatsFailures = simulated.failures;
+      } catch (error) {
+        crawlSummary.simulatedStatsFailures = filteredNameCodes.map(
+          (nameCode) => ({
+            name_code: String(nameCode),
+            reason: String(error?.message || error || "模拟属性计算失败")
+              .slice(0, 180),
+          }),
+        );
+      }
       return crawlSummary;
     } catch (error) {
       console.error("获取角色详情失败:", error);
@@ -865,9 +897,17 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
               nextDict.game_uid = acc.game_uid || (gameUidMatch ? gameUidMatch[1] : "");
 
               // 获取前哨信息
-              const { synchroLevel, outpostLevel } = await getOutpostInfoWithAccount(acc, acc.roleInfo.area_id);
+              const {
+                synchroLevel,
+                outpostLevel,
+                researchLevels,
+              } = await getOutpostInfoWithAccount(
+                acc,
+                acc.roleInfo.area_id,
+              );
               nextDict.synchroLevel = synchroLevel;
               nextDict.outpostLevel = outpostLevel;
+              nextDict.researchLevels = researchLevels;
 
               // 获取主线进度
               const prog = await getCampaignProgressWithAccount(acc, acc.roleInfo.area_id, catalogMap);
@@ -877,6 +917,15 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
               // 获取角色详情，并保留足够的信息区分合法空结果和异常空响应。
               const characterCrawlSummary =
                 await addCharacterDetailsToDictWithAccount(nextDict, acc);
+              if (characterCrawlSummary.simulatedStatsFailures?.length) {
+                const examples = characterCrawlSummary.simulatedStatsFailures
+                  .slice(0, 3)
+                  .map(({ name_code, reason }) => `${name_code}: ${reason}`)
+                  .join("；");
+                addLog(
+                  `⚠ ${accountName} - ${characterCrawlSummary.simulatedStatsFailures.length} 个角色模拟属性留空：${examples}`,
+                );
+              }
 
               return {
                 dict: nextDict,

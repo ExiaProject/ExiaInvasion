@@ -14,6 +14,7 @@ import {
   Button
 } from "@mui/material";
 import TRANSLATIONS from "./i18n/translations.js";
+import { initializeLevelStats } from "./services/levelStats.js";
 import {
   useAuth,
   useSettings,
@@ -31,6 +32,12 @@ export default function App() {
   // ========== 标签页状态 ==========
   const [tab, setTab] = useState("crawler");
   const [manualAreaId, setManualAreaId] = useState("");
+
+  useEffect(() => {
+    initializeLevelStats().catch((error) => {
+      console.warn("共享等级曲线初始化失败:", error);
+    });
+  }, []);
   
   const handleTabChange = useCallback((event, newTab) => {
     if (newTab !== null) {

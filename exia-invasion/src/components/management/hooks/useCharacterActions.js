@@ -3,7 +3,13 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { setCharacters as persistCharacters } from "../../../services/storage.js";
-import { SHOW_STATS_CONFIG_MARKER, basicStatKeys, equipStatKeys } from "../constants.js";
+import {
+  SHOW_STATS_CONFIG_MARKER,
+  SIMULATED_STATS_CONFIG_MARKER,
+  basicStatKeys,
+  simulatedStatKeys,
+  equipStatKeys,
+} from "../constants.js";
 import { downloadFile, selectFile } from "../utils.js";
 
 /**
@@ -155,7 +161,14 @@ export function useCharacterActions({
         name_cn: nikke.name_cn,
         name_en: nikke.name_en,
         priority: "yellow",
-        showStats: [SHOW_STATS_CONFIG_MARKER, ...basicStatKeys, "AtkElemLbScore", ...equipStatKeys]
+        showStats: [
+          SHOW_STATS_CONFIG_MARKER,
+          SIMULATED_STATS_CONFIG_MARKER,
+          ...basicStatKeys,
+          ...simulatedStatKeys,
+          "AtkElemLbScore",
+          ...equipStatKeys,
+        ]
       }));
 
     if (newEntries.length === 0 && removedExistingIds.length === 0) {

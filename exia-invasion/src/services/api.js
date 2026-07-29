@@ -2,6 +2,10 @@
 // API接口和数据处理模块
 import { getCharacters } from "./storage.js";
 import { Converter as OpenCCConverter } from "opencc-js";
+import {
+  createEmptyResearchLevels,
+  mapResearchLevels,
+} from "../utils/researchLevels.js";
 
 // ========== 主线目录缓存键 ==========
 const MAINLINE_CATALOG_MAP_KEY = "mainlineCatalogMap";
@@ -29,10 +33,24 @@ export const loadBaseAccountDict = async () => {
   ["Electronic", "Fire", "Wind", "Water", "Iron", "Utility"].forEach(element => {
     if (charactersData.elements && charactersData.elements[element]) {
       if (Array.isArray(charactersData.elements[element])) {
-        migratedElements[element] = charactersData.elements[element];
+        migratedElements[element] = charactersData.elements[element].map(
+          (character) => ({
+            ...character,
+            simulated_hp: null,
+            simulated_atk: null,
+            simulated_def: null,
+          }),
+        );
       } else {
         // 将对象转换为数组进行迁移
-        migratedElements[element] = Object.values(charactersData.elements[element]);
+        migratedElements[element] = Object.values(
+          charactersData.elements[element],
+        ).map((character) => ({
+          ...character,
+          simulated_hp: null,
+          simulated_atk: null,
+          simulated_def: null,
+        }));
       }
     } else {
       migratedElements[element] = [];
@@ -48,6 +66,7 @@ export const loadBaseAccountDict = async () => {
     normalProgress: "",
     hardProgress: "",
     cubes: cubes,
+    researchLevels: createEmptyResearchLevels(),
     elements: migratedElements,
     options: {
       showEquipDetails
@@ -1053,10 +1072,16 @@ export const validateCookieWithAccount = async (
  * 获取前哨信息（并发模式）
  * @param {{game_uid: string, cookie: string}} account - 账号对象
  * @param {string} areaId - 区域 ID
- * @returns {Promise<{synchroLevel: number, outpostLevel: number}>}
+ * @returns {Promise<{synchroLevel: number, outpostLevel: number, researchLevels: object}>}
  */
 export const getOutpostInfoWithAccount = async (account, areaId) => {
-  if (!areaId) return { synchroLevel: 0, outpostLevel: 0 };
+  if (!areaId) {
+    return {
+      synchroLevel: 0,
+      outpostLevel: 0,
+      researchLevels: createEmptyResearchLevels(),
+    };
+  }
   
   try {
     const resp = await postJsonWithAccount(
@@ -1068,10 +1093,15 @@ export const getOutpostInfoWithAccount = async (account, areaId) => {
     return {
       synchroLevel: Number.isFinite(info.synchro_level) ? info.synchro_level : 0,
       outpostLevel: Number.isFinite(info.outpost_battle_level) ? info.outpost_battle_level : 0,
+      researchLevels: mapResearchLevels(info.recycle_room_researches),
     };
   } catch (error) {
     console.warn("获取前哨信息失败:", error);
-    return { synchroLevel: 0, outpostLevel: 0 };
+    return {
+      synchroLevel: 0,
+      outpostLevel: 0,
+      researchLevels: createEmptyResearchLevels(),
+    };
   }
 };
 
@@ -1133,10 +1163,10 @@ export const getUserCharactersWithAccount = async (account, areaId) => {
     if (resp?.data?.characters) {
       return resp.data.characters.map(char => ({
         name_code: char.name_code,
-        lv: char.lv || 1,
+        lv: Number.isFinite(char.lv) ? char.lv : null,
         combat: char.combat || 0,
-        core: char.core || 0,
-        grade: char.grade || 0,
+        core: Number.isFinite(char.core) ? char.core : null,
+        grade: Number.isFinite(char.grade) ? char.grade : null,
         costume_id: char.costume_id || 0
       }));
     }
@@ -1199,6 +1229,7 @@ export const getCharacterDetailsWithAccount = async (account, areaId, nameCodes)
     
     const equipments = {};
     const equipSlots = ['head', 'torso', 'arm', 'leg'];
+    const rawEquipments = [];
     
     equipSlots.forEach((slot, idx) => {
       const details = [];
@@ -1219,6 +1250,12 @@ export const getCharacterDetailsWithAccount = async (account, areaId, nameCodes)
         }
       }
       equipments[idx] = details;
+      rawEquipments[idx] = {
+        tid: char[`${slot}_equip_tid`] ?? null,
+        level: char[`${slot}_equip_lv`] ?? null,
+        corporation_type:
+          char[`${slot}_equip_corporation_type`] ?? null,
+      };
     });
     
     return {
@@ -1227,11 +1264,17 @@ export const getCharacterDetailsWithAccount = async (account, areaId, nameCodes)
       skill1_lv: char.skill1_lv || 1,
       skill2_lv: char.skill2_lv || 1,
       ulti_skill_lv: char.ulti_skill_lv || 1,
-      favorite_item_lv: char.favorite_item_lv || 0,
+      attractive_lv: Number.isFinite(char.attractive_lv)
+        ? char.attractive_lv
+        : null,
+      favorite_item_lv: Number.isFinite(char.favorite_item_lv)
+        ? char.favorite_item_lv
+        : null,
       favorite_item_tid: char.favorite_item_tid || 0,
       combat: char.combat || 0,
       limitBreak: limitBreak,
       equipments: equipments,
+      raw_equipments: rawEquipments,
       cube_id: char.harmony_cube_tid || 0,
       cube_level: char.harmony_cube_lv || 0
     };
@@ -1311,3 +1354,18 @@ export const fetchAndCacheNikkeDirectory = async () => {
 
 export const getCachedNikkeDirectory = async () =>
   new Promise((res) => chrome.storage.local.get(NIKKE_DIR_CACHE_KEY, (r) => res(r[NIKKE_DIR_CACHE_KEY] || [])));
+
+let nikkeDirectoryEnsurePromise = null;
+
+/**
+ * Reads the global Nikke directory cache and performs at most one fallback
+ * request per extension lifetime when the cache is empty.
+ */
+export const ensureNikkeDirectory = async () => {
+  const cached = await getCachedNikkeDirectory().catch(() => []);
+  if (Array.isArray(cached) && cached.length > 0) return cached;
+  if (!nikkeDirectoryEnsurePromise) {
+    nikkeDirectoryEnsurePromise = fetchAndCacheNikkeDirectory();
+  }
+  return nikkeDirectoryEnsurePromise;
+};

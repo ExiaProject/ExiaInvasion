@@ -26,12 +26,14 @@ import {
   defaultRow,
   equipStatKeys,
   basicStatKeys,
+  simulatedStatKeys,
   NIKKE_TOGGLE_COL_COUNT,
   NIKKE_NAME_MIN_WIDTH_PX,
   NIKKE_PRIORITY_WIDTH_PX,
   NIKKE_DRAG_HANDLE_WIDTH_PX,
   NIKKE_TOGGLE_MIN_WIDTH_PX,
   SHOW_STATS_CONFIG_MARKER,
+  SIMULATED_STATS_CONFIG_MARKER,
   elementTranslationKeys,
   classTranslationKeys,
   corporationTranslationKeys,
@@ -560,7 +562,9 @@ const ManagementPage = () => {
             getPriorityColor={getPriorityColor}
             updateCharacterShowStats={characterActions.updateCharacterShowStats}
             basicStatKeys={basicStatKeys}
+            simulatedStatKeys={simulatedStatKeys}
             showStatsConfigMarker={SHOW_STATS_CONFIG_MARKER}
+            simulatedStatsConfigMarker={SIMULATED_STATS_CONFIG_MARKER}
             nikkeNameMinWidthPx={NIKKE_NAME_MIN_WIDTH_PX}
             nikkePriorityWidthPx={NIKKE_PRIORITY_WIDTH_PX}
             nikkeDragHandleWidthPx={NIKKE_DRAG_HANDLE_WIDTH_PX}

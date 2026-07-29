@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // ========== 管理页面常量定义 ==========
+import {
+  BASIC_STAT_KEYS,
+  SHOW_STATS_CONFIG_MARKER,
+  SIMULATED_STAT_KEYS,
+  SIMULATED_STATS_CONFIG_MARKER,
+} from "../../utils/showStats.js";
 
 export const API_BASE_URL = "https://backend.nikke-exia.com";
 
@@ -29,14 +35,15 @@ export const equipStatKeys = [
 
 // 基础列（突破/技能）键名：用于控制 Excel 导出列是否隐藏
 export const basicStatKeys = [
-  "limit_break",
-  "skill1_level",
-  "skill2_level",
-  "skill_burst_level"
+  ...BASIC_STAT_KEYS,
 ];
 
-// 妮姬列表开关列数量：AEL + 基础(突破/技能) + 装备词条
-export const NIKKE_TOGGLE_COL_COUNT = 1 + basicStatKeys.length + equipStatKeys.length;
+// 模拟属性列：旧模板默认显示，首次操作后由独立标记持久化。
+export const simulatedStatKeys = [...SIMULATED_STAT_KEYS];
+
+// 妮姬列表开关列数量：AEL + 基础 + 模拟属性 + 装备词条
+export const NIKKE_TOGGLE_COL_COUNT =
+  1 + basicStatKeys.length + simulatedStatKeys.length + equipStatKeys.length;
 
 // 妮姬表格列宽：固定列 + 剩余空间均分给开关列
 export const NIKKE_NAME_MIN_WIDTH_PX = 240;
@@ -46,7 +53,7 @@ export const NIKKE_TOGGLE_MIN_WIDTH_PX = 40;
 
 // showStats 配置标记：用于区分"旧数据默认基础列全开"与"用户已手动配置"。
 // 注意：该标记不代表任何列的显示，导出端会忽略它。
-export const SHOW_STATS_CONFIG_MARKER = "__showStatsConfigured";
+export { SHOW_STATS_CONFIG_MARKER, SIMULATED_STATS_CONFIG_MARKER };
 
 // 元素翻译键
 export const elementTranslationKeys = {
