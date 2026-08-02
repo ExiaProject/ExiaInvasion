@@ -109,8 +109,17 @@ const getSharedBatchAreaId = (accounts) => {
  * @param {boolean} options.exportJson - 是否导出 JSON
  * @param {boolean} options.activateTab - 是否激活标签页
  * @param {string} options.server - 服务器
+ * @param {boolean} options.forceSimulatedStatsLevel400 - 是否强制按400级计算模拟属性
  */
-export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server }) {
+export function useCrawler({
+  t,
+  lang,
+  saveAsZip,
+  exportJson,
+  activateTab,
+  server,
+  forceSimulatedStatsLevel400,
+}) {
   const [logState, setLogState] = useState(createLogState);
   const [loading, setLoading] = useState(false);
   const [cookieLoading, setCookieLoading] = useState(false);
@@ -477,6 +486,7 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
           characterDetails,
           nikkeDirectory,
           levelStats,
+          forceSimulatedStatsLevel400,
         });
         crawlSummary.simulatedStatsCount = simulated.calculatedCount;
         crawlSummary.simulatedStatsFailures = simulated.failures;
@@ -494,7 +504,7 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
       console.error("获取角色详情失败:", error);
       throw error;
     }
-  }, []);
+  }, [forceSimulatedStatsLevel400]);
 
   // ========== 数据爬取主流程 ==========
   const handleStart = useCallback(async ({

@@ -444,6 +444,7 @@ export const calculateSimulatedStatsForDict = async ({
   characterDetails,
   nikkeDirectory,
   levelStats,
+  forceSimulatedStatsLevel400 = false,
   staticDataLoader = defaultStaticDataLoader,
 }) => {
   initializeSimulatedOutputs(dict);
@@ -482,6 +483,9 @@ export const calculateSimulatedStatsForDict = async ({
     }
   }
   if (targets.length === 0) return result;
+  const simulationLevel = forceSimulatedStatsLevel400
+    ? 400
+    : dict.synchroLevel;
 
   let baseResources;
   const cubeSelection = selectHighestCube(dict?.cubes);
@@ -532,7 +536,7 @@ export const calculateSimulatedStatsForDict = async ({
         levelStats,
         metadata: target.metadata,
         userCharacter: target.userCharacter,
-        synchroLevel: dict.synchroLevel,
+        synchroLevel: simulationLevel,
         characterDetail: target.characterDetail,
         researchLevels: dict.researchLevels,
         ...baseResources,

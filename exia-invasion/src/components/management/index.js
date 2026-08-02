@@ -14,5 +14,6 @@ export * from "./hooks/index.js";
 export { default as ManagementHeader } from "./ManagementHeader.jsx";
 export { default as AccountTabContent } from "./AccountTabContent.jsx";
 export { default as CharacterTabContent } from "./CharacterTabContent.jsx";
+export { default as SettingsTabContent } from "./SettingsTabContent.jsx";
 export { default as CharacterFilterDialog } from "./CharacterFilterDialog.jsx";
 export { default as SyncConflictDialog } from "./SyncConflictDialog.jsx";

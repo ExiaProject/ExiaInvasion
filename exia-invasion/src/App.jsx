@@ -85,6 +85,7 @@ export default function App() {
     exportJson: settings.exportJson,
     activateTab: settings.activateTab,
     server: settings.server,
+    forceSimulatedStatsLevel400: settings.forceSimulatedStatsLevel400,
   });
 
   // ========== 文件合并 ==========

@@ -126,6 +126,37 @@ const makeTwoLevelStats = () => {
   return levelStats;
 };
 
+const makeFourHundredLevelStats = () => {
+  const levelStats = makeLevelStats();
+  const buildCurve = (levelOne, level400) =>
+    Array.from({ length: 400 }, (_, index) => index === 399 ? level400 : levelOne);
+  const buildDefByWeapon = (levelOne, level400) => Object.fromEntries(
+    ["RL", "AR", "SMG", "SG", "SR", "MG"].map((weapon, index) => [
+      weapon,
+      buildCurve(levelOne + index, level400 + index),
+    ]),
+  );
+
+  levelStats.curves = {
+    attacker: {
+      hp: buildCurve(101, 4001),
+      atk: buildCurve(201, 5001),
+      defByWeapon: buildDefByWeapon(301, 6001),
+    },
+    supporter: {
+      hp: buildCurve(102, 4002),
+      atk: buildCurve(202, 5002),
+      defByWeapon: buildDefByWeapon(307, 6007),
+    },
+    defender: {
+      hp: buildCurve(103, 4003),
+      atk: buildCurve(203, 5003),
+      defByWeapon: buildDefByWeapon(303, 6003),
+    },
+  };
+  return levelStats;
+};
+
 const researchTable = {
   records: [
     { id: 1001, hp: 1, attack: 1, defence: 1 },
@@ -321,6 +352,69 @@ test("dict calculation forwards its synchronizer level to every character", asyn
     simulated_atk: 2001,
     simulated_def: 3001,
   });
+});
+
+test("400-level setting overrides only the simulated stat level", async () => {
+  const runCalculation = async (forceSimulatedStatsLevel400) => {
+    const outputCharacter = { name_code: 101 };
+    const dict = {
+      synchroLevel: 1,
+      cubes: [],
+      researchLevels: {
+        ...createEmptyResearchLevels(),
+        general: 0,
+        attacker: 0,
+        missilis: 0,
+      },
+      elements: { Electronic: [outputCharacter] },
+    };
+
+    const summary = await calculateSimulatedStatsForDict({
+      dict,
+      userCharacters: [{ name_code: 101, lv: 1, grade: 0, core: 0 }],
+      characterDetails: [{
+        name_code: 101,
+        attractive_lv: 0,
+        favorite_item_tid: 0,
+        raw_equipments: [],
+      }],
+      nikkeDirectory: [{
+        name_code: 101,
+        class: "Attacker",
+        corporation: "MISSILIS",
+        weapon_type: "RL",
+      }],
+      levelStats: makeFourHundredLevelStats(),
+      forceSimulatedStatsLevel400,
+      staticDataLoader: {
+        loadBase: async () => ({
+          researchTable,
+          attractiveTable,
+          equipmentTable,
+        }),
+      },
+    });
+
+    return { dict, outputCharacter, summary };
+  };
+
+  const normal = await runCalculation(false);
+  assert.deepEqual(normal.outputCharacter, {
+    name_code: 101,
+    simulated_hp: 101,
+    simulated_atk: 201,
+    simulated_def: 301,
+  });
+
+  const forced = await runCalculation(true);
+  assert.deepEqual(forced.summary, { calculatedCount: 1, failures: [] });
+  assert.deepEqual(forced.outputCharacter, {
+    name_code: 101,
+    simulated_hp: 4001,
+    simulated_atk: 5001,
+    simulated_def: 6001,
+  });
+  assert.equal(forced.dict.synchroLevel, 1);
 });
 
 test("SR/R metadata still uses the approved shared SSR baseline", () => {

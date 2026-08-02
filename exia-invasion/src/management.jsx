@@ -19,6 +19,7 @@ import { getNikkeAvatarUrl as buildNikkeAvatarUrl } from "./utils/nikkeAvatar.js
 import ManagementHeader from "./components/management/ManagementHeader.jsx";
 import AccountTabContent from "./components/management/AccountTabContent.jsx";
 import CharacterTabContent from "./components/management/CharacterTabContent.jsx";
+import SettingsTabContent from "./components/management/SettingsTabContent.jsx";
 import CharacterFilterDialog from "./components/management/CharacterFilterDialog.jsx";
 import SyncConflictDialog from "./components/management/SyncConflictDialog.jsx";
 import {
@@ -56,6 +57,7 @@ const ManagementPage = () => {
   const [syncAccountEmail, setSyncAccountEmail] = useState(false);
   const [syncAccountPassword, setSyncAccountPassword] = useState(false);
   const [showCloudSyncUi, setShowCloudSyncUi] = useState(true);
+  const [forceSimulatedStatsLevel400, setForceSimulatedStatsLevel400] = useState(false);
   const t = useCallback((k) => TRANSLATIONS[lang][k] || k, [lang]);
 
   // ========== 核心状态管理 ==========
@@ -296,17 +298,23 @@ const ManagementPage = () => {
     setSettings({ showCloudSyncUi: next });
   }, [showCloudSyncUi]);
 
+  const toggleForceSimulatedStatsLevel400 = useCallback((e) => {
+    const next = e.target.checked;
+    setForceSimulatedStatsLevel400(next);
+    setSettings({ forceSimulatedStatsLevel400: next });
+  }, []);
+
   // ========== 初始化 Effects ==========
   // 管理页 Tab 持久化
   useEffect(() => {
     chrome.storage.local.get("managementTab", (r) => {
       const saved = Number(r.managementTab);
-      if (saved === 0 || saved === 1) setTab(saved);
+      if (saved === 0 || saved === 1 || saved === 2) setTab(saved);
     });
   }, []);
 
   const handleManagementTabChange = useCallback((e, newTab) => {
-    if (newTab === 0 || newTab === 1) {
+    if (newTab === 0 || newTab === 1 || newTab === 2) {
       setTab(newTab);
       chrome.storage.local.set({ managementTab: newTab });
     }
@@ -324,6 +332,7 @@ const ManagementPage = () => {
       setSyncAccountEmail(Boolean(nextEmail));
       setSyncAccountPassword(Boolean(nextPassword));
       setShowCloudSyncUi(isCloudSyncUiVisible(nextSettings));
+      setForceSimulatedStatsLevel400(Boolean(nextSettings.forceSimulatedStatsLevel400));
     });
     const handler = (c, area) => {
       if (area === "local" && c.settings) {
@@ -336,6 +345,7 @@ const ManagementPage = () => {
         setSyncAccountEmail(Boolean(nextEmail));
         setSyncAccountPassword(Boolean(nextPassword));
         setShowCloudSyncUi(isCloudSyncUiVisible(nextSettings));
+        setForceSimulatedStatsLevel400(Boolean(nextSettings.forceSimulatedStatsLevel400));
       }
     };
     chrome.storage.onChanged.addListener(handler);
@@ -470,6 +480,7 @@ const ManagementPage = () => {
         <Tabs value={tab} onChange={handleManagementTabChange} sx={{ mb: 3 }} aria-label={t("management")}>
           <Tab label={t("accountTable")} />
           <Tab label={t("characterManagement")} />
+          <Tab label={t("managementSettings")} />
         </Tabs>
         {tab === 0 && (
           <AccountTabContent
@@ -575,6 +586,13 @@ const ManagementPage = () => {
             onCharDragOver={characterActions.onCharDragOver}
             onCharDrop={characterActions.onCharDrop}
             onCharDragEnd={characterActions.onCharDragEnd}
+          />
+        )}
+        {tab === 2 && (
+          <SettingsTabContent
+            t={t}
+            forceSimulatedStatsLevel400={forceSimulatedStatsLevel400}
+            onToggleForceSimulatedStatsLevel400={toggleForceSimulatedStatsLevel400}
           />
         )}
       </Container>

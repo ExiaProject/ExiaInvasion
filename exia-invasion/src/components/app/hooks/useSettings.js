@@ -17,6 +17,7 @@ export function useSettings() {
   const [sortFlag, setSortFlag] = useState("1");
   const [collapseEquipDetails, setCollapseEquipDetails] = useState(false);
   const [showCloudSyncUi, setShowCloudSyncUi] = useState(true);
+  const [forceSimulatedStatsLevel400, setForceSimulatedStatsLevel400] = useState(false);
 
   // 初始化设置加载
   useEffect(() => {
@@ -32,6 +33,7 @@ export function useSettings() {
       setServer(s.server || "global");
       setSortFlag(s.sortFlag || "1");
       setShowCloudSyncUi(isCloudSyncUiVisible(s));
+      setForceSimulatedStatsLevel400(Boolean(s.forceSimulatedStatsLevel400));
 
       // 读取全局"折叠词条细节"开关
       setCollapseEquipDetails(chars?.options?.showEquipDetails === false);
@@ -46,6 +48,7 @@ export function useSettings() {
         const nextLang = nextSettings.lang;
         if (nextLang) setLang(nextLang);
         setShowCloudSyncUi(isCloudSyncUiVisible(nextSettings));
+        setForceSimulatedStatsLevel400(Boolean(nextSettings.forceSimulatedStatsLevel400));
         if ("syncAccountSensitive" in nextSettings) {
           // legacy flag ignored in UI
         }
@@ -57,7 +60,15 @@ export function useSettings() {
 
   // 持久化设置
   const persistSettings = useCallback((upd) => {
-    setSettings({ lang, saveAsZip, exportJson, activateTab, server, sortFlag, ...upd });
+    setSettings({
+      lang,
+      saveAsZip,
+      exportJson,
+      activateTab,
+      server,
+      sortFlag,
+      ...upd,
+    });
   }, [lang, saveAsZip, exportJson, activateTab, server, sortFlag]);
 
   // 切换装备详情折叠
@@ -111,6 +122,13 @@ export function useSettings() {
     persistSettings({ sortFlag: v });
   }, [persistSettings]);
 
+  // 切换400级模拟属性
+  const toggleForceSimulatedStatsLevel400 = useCallback((e) => {
+    const v = e.target.checked;
+    setForceSimulatedStatsLevel400(v);
+    persistSettings({ forceSimulatedStatsLevel400: v });
+  }, [persistSettings]);
+
   return {
     // 状态
     lang,
@@ -121,6 +139,7 @@ export function useSettings() {
     sortFlag,
     collapseEquipDetails,
     showCloudSyncUi,
+    forceSimulatedStatsLevel400,
 
     // 操作
     toggleEquipDetail,
@@ -129,6 +148,7 @@ export function useSettings() {
     toggleActivateTab,
     changeServer,
     handleSortChange,
+    toggleForceSimulatedStatsLevel400,
     persistSettings,
   };
 }
