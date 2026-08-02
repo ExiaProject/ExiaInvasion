@@ -7,13 +7,17 @@ import {
   Container,
   Stack,
   Paper,
+  Button,
   Snackbar,
   Alert,
   ToggleButtonGroup,
   ToggleButton
 } from "@mui/material";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import DownloadIcon from "@mui/icons-material/Download";
 import TRANSLATIONS from "./i18n/translations.js";
 import { initializeLevelStats } from "./services/levelStats.js";
+import { createLogFilename, formatLogText } from "./utils/logExport.js";
 import {
   useAuth,
   useSettings,
@@ -91,6 +95,53 @@ export default function App() {
 
   // 合并日志显示
   const displayLogs = tab === "crawler" ? crawler.logs : merge.logs;
+  const fullLogText = formatLogText(crawler.fullLogs);
+  const hasFullLogs = Boolean(fullLogText);
+
+  const handleCopyFullLogs = useCallback(async () => {
+    if (!hasFullLogs) {
+      showMessage(t("fullLogsEmpty"), "info");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(fullLogText);
+      showMessage(t("fullLogsCopied"), "success");
+    } catch (error) {
+      console.error("复制完整日志失败:", error);
+      showMessage(t("fullLogsCopyFailed"), "error");
+    }
+  }, [fullLogText, hasFullLogs, showMessage, t]);
+
+  const handleDownloadFullLogs = useCallback(() => {
+    if (!hasFullLogs) {
+      showMessage(t("fullLogsEmpty"), "info");
+      return;
+    }
+
+    const blob = new Blob(["\ufeff", fullLogText], {
+      type: "text/plain;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+
+    chrome.downloads.download(
+      {
+        url,
+        filename: createLogFilename(),
+        saveAs: false,
+      },
+      () => {
+        const downloadError = chrome.runtime.lastError;
+        URL.revokeObjectURL(url);
+        if (downloadError) {
+          console.error("下载完整日志失败:", downloadError.message);
+          showMessage(t("fullLogsDownloadFailed"), "error");
+          return;
+        }
+        showMessage(t("fullLogsDownloaded"), "success");
+      },
+    );
+  }, [fullLogText, hasFullLogs, showMessage, t]);
 
   /* ========== UI 界面渲染 ========== */
   return (
@@ -159,6 +210,31 @@ export default function App() {
               handleSortChange={settings.handleSortChange}
               handleMerge={merge.handleMerge}
             />
+          )}
+
+          {tab === "crawler" && (
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                size="small"
+                fullWidth
+                startIcon={<ContentCopyIcon />}
+                onClick={handleCopyFullLogs}
+                disabled={!hasFullLogs}
+              >
+                {t("copyFullLogs")}
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                fullWidth
+                startIcon={<DownloadIcon />}
+                onClick={handleDownloadFullLogs}
+                disabled={!hasFullLogs}
+              >
+                {t("downloadFullLogs")}
+              </Button>
+            </Stack>
           )}
           
           <Paper
