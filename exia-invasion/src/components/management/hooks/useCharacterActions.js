@@ -3,7 +3,10 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { setCharacters as persistCharacters } from "../../../services/storage.js";
-import { DEFAULT_SIMULATED_STAT_KEYS } from "../../../utils/showStats.js";
+import {
+  DEFAULT_SIMULATED_STAT_KEYS,
+  updateCharactersShowStat,
+} from "../../../utils/showStats.js";
 import {
   SHOW_STATS_CONFIG_MARKER,
   SIMULATED_STATS_CONFIG_MARKER,
@@ -221,6 +224,14 @@ export function useCharacterActions({
     persistCharacters(newCharacters);
   }, [characters, setCharactersData]);
 
+  // 更新所有角色的同一项显示统计
+  const updateAllCharactersShowStats = useCallback((key, checked) => {
+    const newCharacters = updateCharactersShowStat(characters, key, checked);
+    if (newCharacters === characters) return;
+    setCharactersData(newCharacters);
+    persistCharacters(newCharacters);
+  }, [characters, setCharactersData]);
+
   // 清空所有妮姬列表
   const handleClearAllCharacters = useCallback(() => {
     if (!window.confirm(t("clearAllNikkesConfirm"))) {
@@ -357,6 +368,7 @@ export function useCharacterActions({
     // 角色操作
     updateCharacterPriority,
     updateCharacterShowStats,
+    updateAllCharactersShowStats,
     handleClearAllCharacters,
 
     // 拖拽

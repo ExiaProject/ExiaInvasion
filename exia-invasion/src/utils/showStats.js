@@ -67,3 +67,78 @@ export const toggleShowStat = (rawShowStats, key, checked) => {
     : base.filter((value) => value !== key);
   return uniqueStrings(next);
 };
+
+// Set one output field while preserving the effective defaults of legacy data.
+// A missing family marker means that the corresponding legacy defaults are still
+// active, so only material changes need to materialize an explicit configuration.
+export const setShowStat = (rawShowStats, key, checked) => {
+  const resolved = resolveShowStats(rawShowStats);
+  const currentlyVisible = resolved.effective.includes(key);
+  if (currentlyVisible === checked) return rawShowStats;
+
+  let base = resolved.raw;
+  const isBasic = BASIC_STAT_KEYS.includes(key);
+  const isSimulated = SIMULATED_STAT_KEYS.includes(key);
+
+  if (isBasic && !resolved.basicsConfigured) {
+    base = [
+      ...base,
+      SHOW_STATS_CONFIG_MARKER,
+      ...BASIC_STAT_KEYS.filter((statKey) => resolved.effective.includes(statKey)),
+    ];
+  }
+
+  if (isSimulated && !resolved.simulatedConfigured) {
+    base = [
+      ...base,
+      SIMULATED_STATS_CONFIG_MARKER,
+      ...DEFAULT_SIMULATED_STAT_KEYS.filter((statKey) => resolved.effective.includes(statKey)),
+    ];
+  }
+
+  // AEL and equipment fields are explicit fields, but adding one to a legacy
+  // character must not accidentally disable the legacy-visible basic fields.
+  if (!isBasic && !isSimulated && checked && !resolved.basicsConfigured) {
+    base = [
+      ...base,
+      SHOW_STATS_CONFIG_MARKER,
+      ...BASIC_STAT_KEYS.filter((statKey) => resolved.effective.includes(statKey)),
+    ];
+  }
+
+  const next = checked
+    ? [...base, key]
+    : base.filter((value) => value !== key);
+  return uniqueStrings(next);
+};
+
+// Apply one output-field state to every character in a character template.
+// The original object and unchanged character entries retain their identity so
+// a no-op does not trigger an unnecessary persistence write.
+export const updateCharactersShowStat = (characters, key, checked) => {
+  if (!characters || typeof characters !== "object") return characters;
+  if (!characters.elements || typeof characters.elements !== "object") {
+    return characters;
+  }
+
+  let changed = false;
+  const elements = Object.fromEntries(
+    Object.entries(characters.elements).map(([element, list]) => {
+      if (!Array.isArray(list)) return [element, list];
+
+      let listChanged = false;
+      const nextList = list.map((character) => {
+        if (!character || typeof character !== "object") return character;
+        const nextShowStats = setShowStat(character.showStats, key, checked);
+        if (nextShowStats === character.showStats) return character;
+        changed = true;
+        listChanged = true;
+        return { ...character, showStats: nextShowStats };
+      });
+
+      return [element, listChanged ? nextList : list];
+    }),
+  );
+
+  return changed ? { ...characters, elements } : characters;
+};

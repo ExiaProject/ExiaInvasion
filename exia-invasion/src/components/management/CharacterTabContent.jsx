@@ -1,5 +1,5 @@
 ﻿// SPDX-License-Identifier: GPL-3.0-or-later
-import { memo, forwardRef } from "react";
+import { memo, forwardRef, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -137,6 +137,7 @@ const CharacterTabContent = ({
   updateCharacterPriority,
   getPriorityColor,
   updateCharacterShowStats,
+  updateAllCharactersShowStats,
   basicStatKeys,
   simulatedStatKeys,
   showStatsConfigMarker,
@@ -170,11 +171,77 @@ const CharacterTabContent = ({
         + (equipStatKeys?.length || 0)
       );
 
-  const simulatedStatLabels = [
-    t("simulatedHp"),
-    t("simulatedAtk"),
-    t("simulatedDef"),
-  ];
+  const simulatedStatLabels = useMemo(
+    () => [
+      t("simulatedHp"),
+      t("simulatedAtk"),
+      t("simulatedDef"),
+    ],
+    [t],
+  );
+
+  const globalStatColumns = useMemo(() => {
+    const basicLabels = {
+      limit_break: t("limitBreak"),
+      skill1_level: t("skill1"),
+      skill2_level: t("skill2"),
+      skill_burst_level: t("burst"),
+    };
+
+    return [
+      { key: "AtkElemLbScore", label: t("atkElemLbScore") },
+      ...(basicStatKeys || []).map((key) => ({
+        key,
+        label: basicLabels[key] || key,
+      })),
+      ...(simulatedStatKeys || []).map((key, index) => ({
+        key,
+        label: simulatedStatLabels[index] || key,
+      })),
+      ...(equipStatKeys || []).map((key, index) => ({
+        key,
+        label: equipStatLabels[index] || key,
+      })),
+    ];
+  }, [
+    basicStatKeys,
+    equipStatKeys,
+    equipStatLabels,
+    simulatedStatKeys,
+    simulatedStatLabels,
+    t,
+  ]);
+
+  const allCharacters = useMemo(
+    () => Object.values(characters?.elements || {}).flatMap((list) =>
+      Array.isArray(list) ? list.filter(Boolean) : []
+    ),
+    [characters],
+  );
+
+  const globalStatStates = useMemo(() => {
+    const states = {};
+    globalStatColumns.forEach(({ key }) => {
+      const visibleCount = allCharacters.reduce(
+        (count, character) =>
+          count + (resolveShowStats(character.showStats).effective.includes(key) ? 1 : 0),
+        0,
+      );
+      states[key] = {
+        checked: allCharacters.length > 0 && visibleCount === allCharacters.length,
+        indeterminate: visibleCount > 0 && visibleCount < allCharacters.length,
+      };
+    });
+    return states;
+  }, [allCharacters, globalStatColumns]);
+
+  const handleGlobalStatChange = (key) => {
+    if (!allCharacters.length || typeof updateAllCharactersShowStats !== "function") {
+      return;
+    }
+    const state = globalStatStates[key];
+    updateAllCharactersShowStats(key, !state?.checked);
+  };
 
   const scrollbarReservePx = 16;
 
@@ -441,6 +508,68 @@ const CharacterTabContent = ({
           </Button>
         </Box>
       </Box>
+
+      <TableContainer
+        sx={{
+          mb: 3,
+          overflowX: "auto",
+          border: "1px solid #e0e0e0",
+          borderRadius: 1,
+        }}
+      >
+        <Table size="small" sx={{ tableLayout: "fixed", minWidth: tableMinWidth }}>
+          <TableBody>
+            <TableRow>
+              <TableCell
+                sx={{
+                  width: `${nikkeDragHandleWidthPx}px`,
+                  textAlign: "center",
+                  paddingLeft: "2px",
+                  paddingRight: "2px",
+                }}
+              />
+              <TableCell
+                sx={{
+                  width: `${nikkeNameMinWidthPx}px`,
+                  minWidth: `${nikkeNameMinWidthPx}px`,
+                }}
+              >
+                <Typography variant="body2" noWrap>
+                  {t("globalOutput") || "全局输出"}
+                </Typography>
+              </TableCell>
+              <TableCell
+                sx={{
+                  width: `${nikkePriorityWidthPx}px`,
+                  minWidth: `${nikkePriorityWidthPx}px`,
+                }}
+              />
+              {globalStatColumns.map(({ key, label }) => {
+                const state = globalStatStates[key] || {
+                  checked: false,
+                  indeterminate: false,
+                };
+                return (
+                  <TableCell key={key} sx={toggleCellSx}>
+                    <Tooltip title={label} arrow>
+                      <Checkbox
+                        size="small"
+                        checked={state.checked}
+                        indeterminate={state.indeterminate}
+                        disabled={!allCharacters.length}
+                        onChange={() => handleGlobalStatChange(key)}
+                        inputProps={{
+                          "aria-label": `${t("globalOutput") || "全局输出"}: ${label}`,
+                        }}
+                      />
+                    </Tooltip>
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+          </TableBody>
+        </Table>
+      </TableContainer>
 
       {["Electronic", "Fire", "Wind", "Water", "Iron", "Utility"].map(
         (element) => {

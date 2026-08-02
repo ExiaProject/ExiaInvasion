@@ -561,6 +561,7 @@ const ManagementPage = () => {
             updateCharacterPriority={characterActions.updateCharacterPriority}
             getPriorityColor={getPriorityColor}
             updateCharacterShowStats={characterActions.updateCharacterShowStats}
+            updateAllCharactersShowStats={characterActions.updateAllCharactersShowStats}
             basicStatKeys={basicStatKeys}
             simulatedStatKeys={simulatedStatKeys}
             showStatsConfigMarker={SHOW_STATS_CONFIG_MARKER}
