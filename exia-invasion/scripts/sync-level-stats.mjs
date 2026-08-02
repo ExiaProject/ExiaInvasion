@@ -35,7 +35,9 @@ const fetchRepresentative = async (representative) => {
 };
 
 try {
-  console.log("开始并发更新 8 个 SSR 代表角色等级曲线…");
+  console.log(
+    `开始并发更新 ${LEVEL_STATS_REPRESENTATIVES.length} 个 SSR 代表角色等级曲线…`,
+  );
   const payloads = await Promise.all(
     LEVEL_STATS_REPRESENTATIVES.map(fetchRepresentative),
   );

@@ -5,23 +5,93 @@ import {
   getRoleDataLogicalPath,
 } from "../utils/gameResourcePath.js";
 
-export const LEVEL_STATS_SCHEMA_VERSION = 1;
-export const LEVEL_STATS_CACHE_KEY = "levelStatsCacheV1";
+export const LEVEL_STATS_SCHEMA_VERSION = 2;
+export const LEVEL_STATS_CACHE_KEY = "levelStatsCacheV2";
 
 export const LEVEL_STATS_REPRESENTATIVES = Object.freeze([
   Object.freeze({
-    key: "attacker",
+    key: "attackerAR",
     name: "潘托姆",
     resourceId: 580,
     className: "Attacker",
     weaponType: "AR",
   }),
   Object.freeze({
-    key: "supporter",
+    key: "attackerMG",
+    name: "吉萝婷",
+    resourceId: 180,
+    className: "Attacker",
+    weaponType: "MG",
+  }),
+  Object.freeze({
+    key: "attackerRL",
+    name: "贝斯蒂",
+    resourceId: 91,
+    className: "Attacker",
+    weaponType: "RL",
+  }),
+  Object.freeze({
+    key: "attackerSG",
+    name: "德雷克",
+    resourceId: 101,
+    className: "Attacker",
+    weaponType: "SG",
+  }),
+  Object.freeze({
+    key: "attackerSMG",
+    name: "D",
+    resourceId: 40,
+    className: "Attacker",
+    weaponType: "SMG",
+  }),
+  Object.freeze({
+    key: "attackerSR",
+    name: "麦斯威尔",
+    resourceId: 102,
+    className: "Attacker",
+    weaponType: "SR",
+  }),
+  Object.freeze({
+    key: "supporterSMG",
     name: "米兰达",
     resourceId: 32,
     className: "Supporter",
     weaponType: "SMG",
+  }),
+  Object.freeze({
+    key: "supporterAR",
+    name: "托比",
+    resourceId: 192,
+    className: "Supporter",
+    weaponType: "AR",
+  }),
+  Object.freeze({
+    key: "supporterMG",
+    name: "艾玛",
+    resourceId: 90,
+    className: "Supporter",
+    weaponType: "MG",
+  }),
+  Object.freeze({
+    key: "supporterRL",
+    name: "基里",
+    resourceId: 33,
+    className: "Supporter",
+    weaponType: "RL",
+  }),
+  Object.freeze({
+    key: "supporterSG",
+    name: "梅里",
+    resourceId: 130,
+    className: "Supporter",
+    weaponType: "SG",
+  }),
+  Object.freeze({
+    key: "supporterSR",
+    name: "艾德米",
+    resourceId: 172,
+    className: "Supporter",
+    weaponType: "SR",
   }),
   Object.freeze({
     key: "defenderRL",
@@ -77,7 +147,7 @@ const STAT_ENHANCE_KEYS = Object.freeze([
   "core_defence",
 ]);
 
-const DEFENDER_WEAPONS = Object.freeze(["RL", "AR", "SMG", "SG", "SR", "MG"]);
+const LEVEL_STATS_WEAPONS = Object.freeze(["RL", "AR", "SMG", "SG", "SR", "MG"]);
 const validatedSnapshots = new WeakSet();
 
 const unwrapRoleData = (payload) =>
@@ -155,6 +225,41 @@ const expectedRepresentatives = () =>
     },
   ]));
 
+const getClassRoles = (roles, className) =>
+  LEVEL_STATS_REPRESENTATIVES
+    .filter((representative) => representative.className === className)
+    .map((representative) => ({
+      representative,
+      role: roles.get(representative.key),
+    }));
+
+const buildClassCurves = (roles, className, label) => {
+  const classRoles = getClassRoles(roles, className);
+  const roleByWeapon = new Map(
+    classRoles.map(({ representative, role }) => [representative.weaponType, role]),
+  );
+  const missingWeapons = LEVEL_STATS_WEAPONS.filter((weapon) => !roleByWeapon.has(weapon));
+  if (missingWeapons.length > 0) {
+    throw new Error(`${label} 缺少武器代表: ${missingWeapons.join(", ")}`);
+  }
+
+  const baseRole = classRoles[0]?.role;
+  for (const { role } of classRoles.slice(1)) {
+    if (!arraysEqual(role.hp, baseRole.hp) || !arraysEqual(role.atk, baseRole.atk)) {
+      throw new Error(`${label}代表的 HP/ATK 曲线不一致`);
+    }
+  }
+
+  return {
+    hp: baseRole.hp,
+    atk: baseRole.atk,
+    defByWeapon: Object.fromEntries(LEVEL_STATS_WEAPONS.map((weapon) => [
+      weapon,
+      roleByWeapon.get(weapon).def,
+    ])),
+  };
+};
+
 export const buildLevelStatsSnapshot = (
   roleDataByResourceId,
   updatedAt = new Date().toISOString(),
@@ -170,28 +275,23 @@ export const buildLevelStatsSnapshot = (
     roles.set(representative.key, readRole(payload, representative));
   }
 
-  const expectedLength = roles.get("attacker").hp.length;
+  const expectedLength = roles.get("attackerAR").hp.length;
   for (const role of roles.values()) {
     if (role.hp.length !== expectedLength) {
-      throw new Error("八个代表角色的等级曲线长度不一致");
+      throw new Error(`${LEVEL_STATS_REPRESENTATIVES.length} 个代表角色的等级曲线长度不一致`);
     }
   }
 
-  const sharedEnhance = roles.get("attacker").statEnhance;
+  const sharedEnhance = roles.get(LEVEL_STATS_REPRESENTATIVES[0].key).statEnhance;
   for (const role of roles.values()) {
     if (STAT_ENHANCE_KEYS.some((key) => role.statEnhance[key] !== sharedEnhance[key])) {
-      throw new Error("八个代表角色的突破/核心常量不一致");
+      throw new Error(`${LEVEL_STATS_REPRESENTATIVES.length} 个代表角色的突破/核心常量不一致`);
     }
   }
 
-  const defenderRoles = DEFENDER_WEAPONS.map((weapon) =>
-    roles.get(`defender${weapon}`));
-  const defenderBase = defenderRoles[0];
-  for (const role of defenderRoles.slice(1)) {
-    if (!arraysEqual(role.hp, defenderBase.hp) || !arraysEqual(role.atk, defenderBase.atk)) {
-      throw new Error("六个防御型代表的 HP/ATK 曲线不一致");
-    }
-  }
+  const attackerCurves = buildClassCurves(roles, "Attacker", "火力型");
+  const supporterCurves = buildClassCurves(roles, "Supporter", "辅助型");
+  const defenderCurves = buildClassCurves(roles, "Defender", "防御型");
 
   const snapshot = {
     schemaVersion: LEVEL_STATS_SCHEMA_VERSION,
@@ -199,24 +299,9 @@ export const buildLevelStatsSnapshot = (
     representatives: expectedRepresentatives(),
     statEnhance: { ...sharedEnhance },
     curves: {
-      attacker: {
-        hp: roles.get("attacker").hp,
-        atk: roles.get("attacker").atk,
-        def: roles.get("attacker").def,
-      },
-      supporter: {
-        hp: roles.get("supporter").hp,
-        atk: roles.get("supporter").atk,
-        def: roles.get("supporter").def,
-      },
-      defender: {
-        hp: defenderBase.hp,
-        atk: defenderBase.atk,
-        defByWeapon: Object.fromEntries(DEFENDER_WEAPONS.map((weapon) => [
-          weapon,
-          roles.get(`defender${weapon}`).def,
-        ])),
-      },
+      attacker: attackerCurves,
+      supporter: supporterCurves,
+      defender: defenderCurves,
     },
   };
   return validateLevelStatsSnapshot(snapshot);
@@ -251,17 +336,18 @@ export const validateLevelStatsSnapshot = (snapshot) => {
   }
 
   const curves = [
-    validateCurve(snapshot?.curves?.attacker?.hp, "火力型 HP"),
-    validateCurve(snapshot?.curves?.attacker?.atk, "火力型 ATK"),
-    validateCurve(snapshot?.curves?.attacker?.def, "火力型 DEF"),
-    validateCurve(snapshot?.curves?.supporter?.hp, "辅助型 HP"),
-    validateCurve(snapshot?.curves?.supporter?.atk, "辅助型 ATK"),
-    validateCurve(snapshot?.curves?.supporter?.def, "辅助型 DEF"),
-    validateCurve(snapshot?.curves?.defender?.hp, "防御型 HP"),
-    validateCurve(snapshot?.curves?.defender?.atk, "防御型 ATK"),
-    ...DEFENDER_WEAPONS.map((weapon) =>
-      validateCurve(snapshot?.curves?.defender?.defByWeapon?.[weapon], `防御型 ${weapon} DEF`)),
-  ];
+    ["attacker", "火力型"],
+    ["supporter", "辅助型"],
+    ["defender", "防御型"],
+  ].flatMap(([classKey, label]) => [
+    validateCurve(snapshot?.curves?.[classKey]?.hp, `${label} HP`),
+    validateCurve(snapshot?.curves?.[classKey]?.atk, `${label} ATK`),
+    ...LEVEL_STATS_WEAPONS.map((weapon) =>
+      validateCurve(
+        snapshot?.curves?.[classKey]?.defByWeapon?.[weapon],
+        `${label} ${weapon} DEF`,
+      )),
+  ]);
   const length = curves[0].length;
   if (!curves.every((curve) => curve.length === length)) {
     throw new Error("等级曲线缓存数组长度不一致");
@@ -285,17 +371,10 @@ export const selectSharedLevelCurve = (
   }[String(stat || "").toLowerCase()] || String(stat || "").toLowerCase();
 
   if (!["hp", "atk", "def"].includes(normalizedStat)) return null;
-  if (normalizedClass === "attacker") {
-    return snapshot.curves.attacker[normalizedStat] || null;
-  }
-  if (normalizedClass === "supporter") {
-    return snapshot.curves.supporter[normalizedStat] || null;
-  }
-  if (normalizedClass !== "defender") return null;
-  if (normalizedStat !== "def") {
-    return snapshot.curves.defender[normalizedStat] || null;
-  }
-  return snapshot.curves.defender.defByWeapon?.[
+  if (!["attacker", "supporter", "defender"].includes(normalizedClass)) return null;
+  const classCurves = snapshot.curves[normalizedClass];
+  if (normalizedStat !== "def") return classCurves[normalizedStat] || null;
+  return classCurves.defByWeapon?.[
     String(weaponType || "").toUpperCase()
   ] || null;
 };

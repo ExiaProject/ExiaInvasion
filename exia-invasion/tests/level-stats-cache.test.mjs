@@ -59,7 +59,7 @@ test("startup refresh is deduplicated and writes one atomic cache value", async 
     manager.initialize(),
   ]);
   assert.equal(first, second);
-  assert.equal(requestCount, 8);
+  assert.equal(requestCount, 18);
   assert.equal(writes.length, 1);
   assert.equal(writes[0].updatedAt, "2026-07-29T00:00:00.000Z");
 });

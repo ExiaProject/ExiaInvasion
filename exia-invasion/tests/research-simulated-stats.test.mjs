@@ -14,11 +14,21 @@ import {
 } from "../src/utils/researchLevels.js";
 
 const makeLevelStats = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   updatedAt: "2026-07-29T00:00:00.000Z",
   representatives: {
-    attacker: { resourceId: 580, className: "Attacker", weaponType: "AR" },
-    supporter: { resourceId: 32, className: "Supporter", weaponType: "SMG" },
+    attackerAR: { resourceId: 580, className: "Attacker", weaponType: "AR" },
+    attackerMG: { resourceId: 180, className: "Attacker", weaponType: "MG" },
+    attackerRL: { resourceId: 91, className: "Attacker", weaponType: "RL" },
+    attackerSG: { resourceId: 101, className: "Attacker", weaponType: "SG" },
+    attackerSMG: { resourceId: 40, className: "Attacker", weaponType: "SMG" },
+    attackerSR: { resourceId: 102, className: "Attacker", weaponType: "SR" },
+    supporterSMG: { resourceId: 32, className: "Supporter", weaponType: "SMG" },
+    supporterAR: { resourceId: 192, className: "Supporter", weaponType: "AR" },
+    supporterMG: { resourceId: 90, className: "Supporter", weaponType: "MG" },
+    supporterRL: { resourceId: 33, className: "Supporter", weaponType: "RL" },
+    supporterSG: { resourceId: 130, className: "Supporter", weaponType: "SG" },
+    supporterSR: { resourceId: 172, className: "Supporter", weaponType: "SR" },
     defenderRL: { resourceId: 80, className: "Defender", weaponType: "RL" },
     defenderAR: { resourceId: 281, className: "Defender", weaponType: "AR" },
     defenderSMG: { resourceId: 380, className: "Defender", weaponType: "SMG" },
@@ -36,8 +46,30 @@ const makeLevelStats = () => ({
     core_defence: 200,
   },
   curves: {
-    attacker: { hp: [101], atk: [201], def: [301] },
-    supporter: { hp: [102], atk: [202], def: [302] },
+    attacker: {
+      hp: [101],
+      atk: [201],
+      defByWeapon: {
+        RL: [301],
+        AR: [302],
+        SMG: [303],
+        SG: [304],
+        SR: [305],
+        MG: [306],
+      },
+    },
+    supporter: {
+      hp: [102],
+      atk: [202],
+      defByWeapon: {
+        RL: [307],
+        AR: [308],
+        SMG: [309],
+        SG: [310],
+        SR: [311],
+        MG: [312],
+      },
+    },
     defender: {
       hp: [103],
       atk: [203],
@@ -58,12 +90,26 @@ const makeTwoLevelStats = () => {
   levelStats.curves.attacker = {
     hp: [101, 1001],
     atk: [201, 2001],
-    def: [301, 3001],
+    defByWeapon: {
+      RL: [301, 3001],
+      AR: [302, 3002],
+      SMG: [303, 3003],
+      SG: [304, 3004],
+      SR: [305, 3005],
+      MG: [306, 3006],
+    },
   };
   levelStats.curves.supporter = {
     hp: [102, 1002],
     atk: [202, 2002],
-    def: [302, 3002],
+    defByWeapon: {
+      RL: [307, 3007],
+      AR: [308, 3008],
+      SMG: [309, 3009],
+      SG: [310, 3010],
+      SR: [311, 3011],
+      MG: [312, 3012],
+    },
   };
   levelStats.curves.defender = {
     hp: [103, 1003],

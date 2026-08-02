@@ -42,38 +42,69 @@ export const makeRolePayloads = () => {
   return payloads;
 };
 
-test("the eight configured representatives match the approved SSR matrix", () => {
+test("the eighteen configured representatives match the approved SSR matrix", () => {
   assert.deepEqual(
     LEVEL_STATS_REPRESENTATIVES.map(
-      ({ resourceId, className, weaponType }) => [
+      ({ key, resourceId, className, weaponType }) => [
+        key,
         resourceId,
         className,
         weaponType,
       ],
     ),
     [
-      [580, "Attacker", "AR"],
-      [32, "Supporter", "SMG"],
-      [80, "Defender", "RL"],
-      [281, "Defender", "AR"],
-      [380, "Defender", "SMG"],
-      [30, "Defender", "SG"],
-      [620, "Defender", "SR"],
-      [330, "Defender", "MG"],
+      ["attackerAR", 580, "Attacker", "AR"],
+      ["attackerMG", 180, "Attacker", "MG"],
+      ["attackerRL", 91, "Attacker", "RL"],
+      ["attackerSG", 101, "Attacker", "SG"],
+      ["attackerSMG", 40, "Attacker", "SMG"],
+      ["attackerSR", 102, "Attacker", "SR"],
+      ["supporterSMG", 32, "Supporter", "SMG"],
+      ["supporterAR", 192, "Supporter", "AR"],
+      ["supporterMG", 90, "Supporter", "MG"],
+      ["supporterRL", 33, "Supporter", "RL"],
+      ["supporterSG", 130, "Supporter", "SG"],
+      ["supporterSR", 172, "Supporter", "SR"],
+      ["defenderRL", 80, "Defender", "RL"],
+      ["defenderAR", 281, "Defender", "AR"],
+      ["defenderSMG", 380, "Defender", "SMG"],
+      ["defenderSG", 30, "Defender", "SG"],
+      ["defenderSR", 620, "Defender", "SR"],
+      ["defenderMG", 330, "Defender", "MG"],
     ],
   );
 });
 
-test("snapshot extraction shares defender HP/ATK and keeps six DEF curves", () => {
+test("snapshot extraction shares class HP/ATK and keeps six DEF curves per class", () => {
   const snapshot = buildLevelStatsSnapshot(
     makeRolePayloads(),
     "2026-07-29T00:00:00.000Z",
   );
   assert.deepEqual(snapshot.curves.defender.hp, [30, 31, 32]);
   assert.deepEqual(snapshot.curves.defender.atk, [40, 41, 42]);
+  assert.deepEqual(snapshot.curves.attacker.hp, [10, 11, 12]);
+  assert.deepEqual(snapshot.curves.attacker.atk, [20, 21, 22]);
+  assert.deepEqual(snapshot.curves.supporter.hp, [10, 11, 12]);
+  assert.deepEqual(snapshot.curves.supporter.atk, [20, 21, 22]);
+  assert.deepEqual(
+    Object.keys(snapshot.curves.attacker.defByWeapon),
+    ["RL", "AR", "SMG", "SG", "SR", "MG"],
+  );
+  assert.deepEqual(
+    Object.keys(snapshot.curves.supporter.defByWeapon),
+    ["RL", "AR", "SMG", "SG", "SR", "MG"],
+  );
   assert.deepEqual(
     Object.keys(snapshot.curves.defender.defByWeapon),
     ["RL", "AR", "SMG", "SG", "SR", "MG"],
+  );
+  assert.notDeepEqual(
+    snapshot.curves.attacker.defByWeapon.RL,
+    snapshot.curves.attacker.defByWeapon.AR,
+  );
+  assert.notDeepEqual(
+    snapshot.curves.supporter.defByWeapon.RL,
+    snapshot.curves.supporter.defByWeapon.AR,
   );
   assert.notDeepEqual(
     snapshot.curves.defender.defByWeapon.RL,
@@ -81,23 +112,23 @@ test("snapshot extraction shares defender HP/ATK and keeps six DEF curves", () =
   );
 });
 
-test("curve selection applies fixed attacker/supporter representatives and defender weapon DEF", () => {
+test("curve selection applies weapon-specific DEF for every class", () => {
   const snapshot = buildLevelStatsSnapshot(makeRolePayloads());
   assert.equal(
-    selectSharedLevelCurve(snapshot, "Attacker", "RL", "def"),
-    snapshot.curves.attacker.def,
+    selectSharedLevelCurve(snapshot, "Attacker", "MG", "def"),
+    snapshot.curves.attacker.defByWeapon.MG,
   );
   assert.equal(
-    selectSharedLevelCurve(snapshot, "Supporter", "MG", "hp"),
-    snapshot.curves.supporter.hp,
+    selectSharedLevelCurve(snapshot, "Supporter", "AR", "def"),
+    snapshot.curves.supporter.defByWeapon.AR,
   );
   assert.equal(
     selectSharedLevelCurve(snapshot, "Defender", "SR", "def"),
     snapshot.curves.defender.defByWeapon.SR,
   );
   assert.equal(
-    selectSharedLevelCurve(snapshot, "Defender", "SR", "atk"),
-    snapshot.curves.defender.atk,
+    selectSharedLevelCurve(snapshot, "Attacker", "RL", "atk"),
+    snapshot.curves.attacker.atk,
   );
 });
 
