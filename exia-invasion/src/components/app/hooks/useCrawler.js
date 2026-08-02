@@ -19,6 +19,7 @@ import { registerCookieRules, unregisterAllRules } from "../../../services/reque
 import { parseGameUidFromCookie, cookieArrToStr } from "../utils.js";
 import { BATCH_SIZE, STAGGER_DELAY } from "../constants.js";
 import { crawlWithEmptyDataRetry } from "../../../utils/crawlValidation.js";
+import { appendLogEntry, createLogState } from "../../../utils/logBuffer.js";
 
 const AUTO_SAVE_DATA = true;
 const REQUIRED_LOGIN_COOKIE_NAMES = ["game_token", "game_uid", "game_openid"];
@@ -77,13 +78,12 @@ const summarizeBrowserCookies = (cookies) => {
   return `Cookie快照: total=${relevantCookies.length}; ${requiredSummary.join("; ")}; names=[${cookieNames.join(",")}]`;
 };
 
-const createAccountDiagnosticLogger = (addLog, account, scope) => {
+const createAccountDiagnosticLogger = (addFullLog, account, scope) => {
   const accountLabel = getAccountDiagnosticLabel(account);
   return (message) => {
     const timestamp = new Date().toISOString().slice(11, 23);
     const line = `[诊断 ${timestamp}][${accountLabel}][${scope}] ${message}`;
-    console.debug(line);
-    addLog(line);
+    addFullLog(line);
   };
 };
 
@@ -111,12 +111,18 @@ const getSharedBatchAreaId = (accounts) => {
  * @param {string} options.server - 服务器
  */
 export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server }) {
-  const [logs, setLogs] = useState([]);
+  const [logState, setLogState] = useState(createLogState);
   const [loading, setLoading] = useState(false);
   const [cookieLoading, setCookieLoading] = useState(false);
 
-  const addLog = useCallback((msg) => setLogs((prev) => [...prev, msg]), []);
-  const clearLogs = useCallback(() => setLogs([]), []);
+  const addLog = useCallback((msg) => {
+    setLogState((prev) => appendLogEntry(prev, msg));
+  }, []);
+  const addDiagnosticLog = useCallback((msg) => {
+    console.debug(msg);
+    setLogState((prev) => appendLogEntry(prev, msg, { diagnostic: true }));
+  }, []);
+  const clearLogs = useCallback(() => setLogState(createLogState()), []);
 
   // ========== Cookie 保存功能 ==========
   const handleSaveCookie = useCallback(async () => {
@@ -587,7 +593,7 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
         addLog(`[阶段1] 并发验证 Cookie...`);
         
         // 注册拦截规则
-        addLog(
+        addDiagnosticLog(
           `[诊断] Cookie注入规则准备: accounts=${accounts.length}; eligible=${accounts.filter((account) => account.game_uid && account.cookie).length}; missingGameUid=${accounts.filter((account) => !account.game_uid).length}; missingCookie=${accounts.filter((account) => !account.cookie).length}`
         );
         await registerCookieRules(accounts);
@@ -600,7 +606,7 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
             const delay = idx * STAGGER_DELAY;
             return (async () => {
               await new Promise(r => setTimeout(r, delay));
-              const diagnosticLog = createAccountDiagnosticLogger(addLog, acc, "保存Cookie验证");
+              const diagnosticLog = createAccountDiagnosticLogger(addDiagnosticLog, acc, "保存Cookie验证");
               const result = await validateCookieWithAccount(
                 acc,
                 diagnosticLog,
@@ -667,7 +673,7 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
         
         for (const acc of reloginAccounts) {
           addLog(`正在登录: ${acc.username || acc.name || acc.email || t("noName")}`);
-          const diagnosticLog = createAccountDiagnosticLogger(addLog, acc, "重新登录");
+          const diagnosticLog = createAccountDiagnosticLogger(addDiagnosticLog, acc, "重新登录");
           diagnosticLog(
             `开始: server=${server}; storedCookie=${acc.cookie ? "present" : "empty"}; storedGameUid=${acc.game_uid ? "present" : "empty"}`
           );
@@ -1044,7 +1050,7 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
       
       addLog(t("done"));
     } catch (e) {
-      setLogs((l) => [...l, `[异常] ${e}`]);
+      addLog(`[异常] ${e}`);
       addLog(`${t("fail")}${e}`);
       // 确保清理规则
       await unregisterAllRules().catch(() => {});
@@ -1060,10 +1066,11 @@ export function useCrawler({ t, lang, saveAsZip, exportJson, activateTab, server
         setLoading(false);
       }
     }
-  }, [t, lang, saveAsZip, exportJson, server, clearLogs, addLog, loginAndGetCookie, addCharacterDetailsToDictWithAccount]);
+  }, [t, lang, saveAsZip, exportJson, server, clearLogs, addLog, addDiagnosticLog, loginAndGetCookie, addCharacterDetailsToDictWithAccount]);
 
   return {
-    logs,
+    logs: logState.logs,
+    fullLogs: logState.fullLogs,
     loading,
     cookieLoading,
     addLog,
