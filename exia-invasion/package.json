@@ -3,16 +3,22 @@
   "private": true,
   "version": "3.1.3",
   "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/IsolateOB/ExiaInvasion",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IsolateOB/ExiaInvasion.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/sync-license.mjs && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node --test tests/*.test.mjs",
+    "sync:license": "node scripts/sync-license.mjs",
     "sync:level-stats": "node scripts/sync-level-stats.mjs",
     "preversion": "node scripts/version-git.mjs pre && npm run lint && npm test",
-    "version": "node scripts/sync-version.mjs && git add package.json package-lock.json public/manifest.json",
+    "version": "node scripts/sync-version.mjs && node scripts/sync-license.mjs && git add package.json package-lock.json public/manifest.json public/LICENSE",
     "postversion": "node scripts/version-git.mjs post"
   },
   "dependencies": {

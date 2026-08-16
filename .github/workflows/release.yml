@@ -114,6 +114,7 @@ jobs:
             "dist/background.js",
             "dist/content-auth.js",
             "dist/cubes.json",
+            "dist/LICENSE",
             "dist/images/icon-16.png",
             "dist/images/icon-32.png",
             "dist/images/icon-48.png",
@@ -158,7 +159,7 @@ jobs:
             exit 1
           fi
 
-          for REQUIRED_PATH in manifest.json index.html management.html background.js; do
+          for REQUIRED_PATH in manifest.json index.html management.html background.js LICENSE; do
             if ! grep -Fxq "$REQUIRED_PATH" "$ARCHIVE_LISTING"; then
               echo "::error::The release archive is missing '$REQUIRED_PATH'."
               exit 1

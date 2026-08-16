@@ -11,7 +11,10 @@ import {
   Snackbar,
   Alert,
   ToggleButtonGroup,
-  ToggleButton
+  ToggleButton,
+  Typography,
+  Link,
+  Box,
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -250,6 +253,36 @@ export default function App() {
           >
             {displayLogs.join("\n")}
           </Paper>
+
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 0.75,
+              fontSize: 11,
+              color: "text.secondary",
+              pt: 0.25,
+              pb: 0.5,
+            }}
+          >
+            <Typography variant="caption" color="text.secondary">
+              GPL-3.0 License
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              ·
+            </Typography>
+            <Link
+              href="https://github.com/IsolateOB/ExiaInvasion"
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              color="inherit"
+              sx={{ fontSize: 11 }}
+            >
+              {t("sourceCode") || "GitHub 源代码"}
+            </Link>
+          </Box>
 
         </Stack>
       </Container>
