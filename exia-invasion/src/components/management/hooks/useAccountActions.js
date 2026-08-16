@@ -179,10 +179,10 @@ export function useAccountActions({
             emailCol = colNumber;
           } else if (cellValue.includes('密码') || cellValue.includes('password')) {
             passwordCol = colNumber;
-          } else if (cellValue.includes('cookie')) {
-            cookieCol = colNumber;
           } else if (cellValue.includes('更新时间') || cellValue.includes('updated')) {
             cookieUpdatedAtCol = colNumber;
+          } else if (cellValue.includes('cookie')) {
+            cookieCol = colNumber;
           }
         });
 
