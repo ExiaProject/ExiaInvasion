@@ -13,10 +13,14 @@ import {
   Typography,
   CircularProgress,
   TextField,
+  InputAdornment,
+  Tooltip,
+  IconButton,
 } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SaveIcon from "@mui/icons-material/Save";
 import SettingsIcon from "@mui/icons-material/Settings";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import { parseManualAreaId } from "../../utils/areaId.js";
 
 const CrawlerTabContent = ({
@@ -114,13 +118,35 @@ const CrawlerTabContent = ({
         onChange={(event) => onManualAreaIdChange(event.target.value)}
         onBlur={normalizeManualAreaId}
         error={manualAreaIdInvalid}
-        helperText={
-          manualAreaIdInvalid
-            ? t("manualAreaIdInvalid")
-            : t("manualAreaIdHelp")
-        }
+        helperText={manualAreaIdInvalid ? t("manualAreaIdInvalid") : undefined}
         disabled={loading || cookieLoading}
         slotProps={{
+          input: {
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip
+                  title={t("manualAreaIdHelp")}
+                  arrow
+                  placement="top"
+                  slotProps={{
+                    tooltip: {
+                      sx: { maxWidth: 300, fontSize: "0.75rem", lineHeight: 1.4 },
+                    },
+                  }}
+                >
+                  <IconButton
+                    size="small"
+                    edge="end"
+                    aria-label={t("manualAreaIdHelp")}
+                    tabIndex={-1}
+                    sx={{ color: "action.active" }}
+                  >
+                    <HelpOutlineIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          },
           htmlInput: {
             inputMode: "numeric",
             pattern: "[0-9]*",
