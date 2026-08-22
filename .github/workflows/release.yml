@@ -181,6 +181,8 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
           EXPECTED_VERSION: ${{ steps.version.outputs.version }}
         run: |
+          git fetch origin cloud:cloud 2>/dev/null || git fetch origin cloud 2>/dev/null || true
+
           if ! git rev-parse --verify origin/cloud >/dev/null 2>&1; then
             echo "Cloud branch 'origin/cloud' not found on remote; skipping cloud edition build."
             exit 0
@@ -199,6 +201,8 @@ jobs:
           node --input-type=module <<'NODE'
           import { existsSync, readFileSync, readdirSync } from "node:fs";
 
+          const expected = process.env.EXPECTED_VERSION;
+          const manifest = JSON.parse(readFileSync("dist/manifest.json", "utf8"));
           const requiredFiles = [
             "dist/manifest.json",
             "dist/index.html",
@@ -215,6 +219,10 @@ jobs:
           const missingFiles = requiredFiles.filter((path) => !existsSync(path));
           const javascriptAssets = readdirSync("dist/assets").filter((name) => name.endsWith(".js"));
 
+          if (manifest.version !== expected) {
+            console.error(`Built cloud manifest version ${manifest.version} does not match expected ${expected}. Please ensure main has been merged into cloud.`);
+            process.exit(1);
+          }
           if (missingFiles.length > 0) {
             console.error(`Cloud build output is missing: ${missingFiles.join(", ")}`);
             process.exit(1);
@@ -224,7 +232,7 @@ jobs:
             process.exit(1);
           }
 
-          console.log("Verified cloud build output.");
+          console.log(`Verified cloud build output for version ${expected}.`);
           NODE
 
           # Package cloud edition

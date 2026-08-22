@@ -92,6 +92,7 @@ const expectedFiles = [
   toRepoPath(join(projectRoot, "package.json")),
   toRepoPath(join(projectRoot, "package-lock.json")),
   toRepoPath(join(projectRoot, "public", "manifest.json")),
+  toRepoPath(join(projectRoot, "public", "LICENSE")),
 ].sort();
 const stagedFiles = runGit(["diff", "--cached", "--name-only"], {
   cwd: repoRoot,
