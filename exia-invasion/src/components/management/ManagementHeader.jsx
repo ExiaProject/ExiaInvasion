@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { memo } from "react";
-import { AppBar, Toolbar, Typography, Box, Switch, Button, IconButton, Tooltip, SvgIcon } from "@mui/material";
-import CloudIcon from "@mui/icons-material/Cloud";
-import CloudOffIcon from "@mui/icons-material/CloudOff";
+import { AppBar, Toolbar, Typography, Box, Switch, IconButton, Tooltip, SvgIcon } from "@mui/material";
 
 const GITHUB_REPO_URL = "https://github.com/IsolateOB/ExiaInvasion";
 
@@ -17,8 +15,6 @@ const ManagementHeader = ({
   lang,
   onToggleLang,
   t,
-  showCloudSyncUi,
-  onToggleCloudSyncUi,
 }) => (
   <AppBar position="sticky" sx={{ top: 0, zIndex: (theme) => theme.zIndex.appBar }}>
     <Toolbar>
@@ -40,25 +36,6 @@ const ManagementHeader = ({
           inputProps={{ "aria-label": "Language" }}
         />
         <Typography variant="caption">EN</Typography>
-        <Button
-          size="small"
-          color="inherit"
-          variant="outlined"
-          startIcon={showCloudSyncUi ? <CloudOffIcon /> : <CloudIcon />}
-          onClick={onToggleCloudSyncUi}
-          aria-label={showCloudSyncUi ? t("sync.hideUi") : t("sync.showUi")}
-          sx={{
-            ml: 2,
-            whiteSpace: "nowrap",
-            borderColor: "rgba(255, 255, 255, 0.7)",
-            "&:hover": {
-              borderColor: "white",
-              bgcolor: "rgba(255, 255, 255, 0.08)",
-            },
-          }}
-        >
-          {showCloudSyncUi ? t("sync.hideUi") : t("sync.showUi")}
-        </Button>
         <Tooltip title={t("sourceCode") || "GitHub 源代码"} arrow>
           <IconButton
             color="inherit"
@@ -69,7 +46,7 @@ const ManagementHeader = ({
             rel="noopener noreferrer"
             aria-label={t("sourceCode") || "GitHub 源代码"}
             sx={{
-              ml: 1,
+              ml: 1.5,
               color: "white",
               opacity: 0.9,
               "&:hover": { opacity: 1, bgcolor: "rgba(255, 255, 255, 0.1)" },

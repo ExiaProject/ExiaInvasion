@@ -10,17 +10,10 @@ import {
   Button,
   IconButton,
   Tooltip,
-  Avatar,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  Divider,
   SvgIcon,
 } from "@mui/material";
-import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
 import NewReleasesOutlinedIcon from "@mui/icons-material/NewReleasesOutlined";
-import { AVATAR_URL } from "./constants.js";
 
 const GITHUB_REPO_URL = "https://github.com/IsolateOB/ExiaInvasion";
 
@@ -38,21 +31,20 @@ const DiscordIcon = (props) => (
 
 const AppHeader = ({
   t,
-  authUsername,
-  authAvatarUrl,
-  authAnchorEl,
-  menuOpen,
-  handleAvatarClick,
-  handleMenuClose,
-  handleLogoutClick,
-  openLoginDialog,
-  showCloudSyncUi,
   updateAvailable,
   latestVersion,
   releaseUrl,
 }) => {
   const iconUrl = useMemo(() => chrome.runtime.getURL("images/icon-128.png"), []);
   const updateMessage = t("updateAvailable").replace("{version}", latestVersion);
+
+  const handleOpenManagement = () => {
+    if (chrome.runtime.openOptionsPage) {
+      chrome.runtime.openOptionsPage();
+    } else {
+      window.open(chrome.runtime.getURL("management.html"), "_blank");
+    }
+  };
 
   return (
     <AppBar position="sticky">
@@ -97,6 +89,22 @@ const AppHeader = ({
           )}
         </Box>
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          <Tooltip title={t("management") || "管理面板"} arrow>
+            <IconButton
+              color="inherit"
+              size="small"
+              onClick={handleOpenManagement}
+              aria-label={t("management") || "管理面板"}
+              sx={{
+                p: 0.75,
+                color: "inherit",
+                opacity: 0.9,
+                "&:hover": { opacity: 1, bgcolor: "rgba(255, 255, 255, 0.1)" },
+              }}
+            >
+              <SettingsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Tooltip title={t("sourceCode") || "GitHub 源代码"} arrow>
             <IconButton
               color="inherit"
@@ -116,112 +124,25 @@ const AppHeader = ({
               <GitHubIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          {showCloudSyncUi && (
-            authUsername ? (
-              <>
-                <Avatar
-                  src={authAvatarUrl || AVATAR_URL}
-                  alt={authUsername}
-                  onClick={handleAvatarClick}
-                  sx={{
-                    width: 32,
-                    height: 32,
-                    cursor: "pointer",
-                    border: "2px solid rgba(255, 255, 255, 0.8)",
-                    transition: "transform 0.2s, box-shadow 0.2s",
-                    "&:hover": {
-                      transform: "scale(1.05)",
-                      boxShadow: "0 0 0 3px rgba(255, 255, 255, 0.3)",
-                    },
-                  }}
-                />
-                <Menu
-                  anchorEl={authAnchorEl}
-                  open={menuOpen}
-                  onClose={handleMenuClose}
-                  onClick={handleMenuClose}
-                  transformOrigin={{ horizontal: "right", vertical: "top" }}
-                  anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
-                  slotProps={{
-                    paper: {
-                      elevation: 3,
-                      sx: {
-                        mt: 1,
-                        minWidth: 180,
-                        borderRadius: 2,
-                        overflow: "visible",
-                        "&::before": {
-                          content: '""',
-                          display: "block",
-                          position: "absolute",
-                          top: 0,
-                          right: 14,
-                          width: 10,
-                          height: 10,
-                          bgcolor: "background.paper",
-                          transform: "translateY(-50%) rotate(45deg)",
-                          zIndex: 0,
-                        },
-                      },
-                    },
-                  }}
-                >
-                  <Box sx={{ px: 2, py: 1.5 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                      {t("auth.greeting") || "出刀吧！"}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {authUsername}
-                    </Typography>
-                  </Box>
-                  <Divider />
-                  <MenuItem
-                    onClick={() => {
-                      window.open(GITHUB_REPO_URL, "_blank");
-                    }}
-                    sx={{ py: 1.5 }}
-                  >
-                    <ListItemIcon>
-                      <GitHubIcon fontSize="small" />
-                    </ListItemIcon>
-                    {t("sourceCode") || "GitHub 源代码"}
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      window.open("https://exia.nikke.cc/setting", "_blank");
-                    }}
-                    sx={{ py: 1.5 }}
-                  >
-                    <ListItemIcon>
-                      <SettingsIcon fontSize="small" />
-                    </ListItemIcon>
-                    {t("user.settings") || "用户设置"}
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      window.open("https://discord.gg/fRW7PbYZAB", "_blank");
-                    }}
-                    sx={{ py: 1.5 }}
-                  >
-                    <ListItemIcon>
-                      <DiscordIcon fontSize="small" />
-                    </ListItemIcon>
-                    {t("user.feedback") || "交流/反馈"}
-                  </MenuItem>
-                  <MenuItem onClick={handleLogoutClick} sx={{ py: 1.5 }}>
-                    <ListItemIcon>
-                      <LogoutIcon fontSize="small" />
-                    </ListItemIcon>
-                    {t("auth.logout") || "退出"}
-                  </MenuItem>
-                </Menu>
-              </>
-            ) : (
-              <Button variant="outlined" color="inherit" onClick={openLoginDialog}>
-                {t("auth.login") || "登录"}
-              </Button>
-            )
-          )}
+          <Tooltip title={t("user.feedback") || "交流/反馈"} arrow>
+            <IconButton
+              color="inherit"
+              size="small"
+              component="a"
+              href="https://discord.gg/fRW7PbYZAB"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={t("user.feedback") || "交流/反馈"}
+              sx={{
+                p: 0.75,
+                color: "inherit",
+                opacity: 0.9,
+                "&:hover": { opacity: 1, bgcolor: "rgba(255, 255, 255, 0.1)" },
+              }}
+            >
+              <DiscordIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Toolbar>
     </AppBar>

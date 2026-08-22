@@ -19,7 +19,6 @@ import {
   getNextAccountTemplateId,
   setCharacters as persistCharacters,
 } from "../../../services/storage.js";
-import { buildCharactersSignature } from "../../../utils/cloudCompare.js";
 
 /**
  * 模板管理 Hook
@@ -144,8 +143,8 @@ export function useTemplateManagement({
     const currentTemplates = templatesRef.current;
     const tpl = currentTemplates.find((item) => item.id === templateId);
     if (!tpl) return;
-    const currentSig = buildCharactersSignature(tpl.data || {});
-    const nextSig = buildCharactersSignature(data || {});
+    const currentSig = JSON.stringify(tpl.data || {});
+    const nextSig = JSON.stringify(data || {});
     if (currentSig === nextSig) return;
     const updated = { ...tpl, data: data || {} };
     setTemplates((prev) => prev.map((item) => (item.id === templateId ? updated : item)));

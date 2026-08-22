@@ -9,8 +9,6 @@ const CHARACTERS_KEY = "characters"; // 角色存储键
 const TEMPLATES_KEY = "characterTemplates"; // 角色模板存储键
 const CURRENT_TEMPLATE_KEY = "currentTemplate"; // 当前选中的模板
 const TEMPLATE_ID_SEQ_KEY = "characterTemplatesSeq";
-const AUTH_KEY = "auth"; // 登录态存储键
-const SYNC_META_KEY = "syncMeta"; // 云同步元数据
 
 // 获取设置数据
 export const getSettings = () =>
@@ -24,39 +22,6 @@ export const setSettings = (obj) =>
     chrome.storage.local.get(SETTINGS_KEY, (r) => {
       const current = r[SETTINGS_KEY] || {};
       chrome.storage.local.set({ [SETTINGS_KEY]: { ...current, ...obj } }, () => res());
-    })
-  );
-
-// 获取登录态
-export const getAuth = () =>
-  new Promise((res) =>
-    chrome.storage.local.get(AUTH_KEY, (r) => res(r[AUTH_KEY] || null))
-  );
-
-// 保存登录态
-export const setAuth = (obj) =>
-  new Promise((res) =>
-    chrome.storage.local.set({ [AUTH_KEY]: obj }, () => res())
-  );
-
-// 清除登录态
-export const clearAuth = () =>
-  new Promise((res) =>
-    chrome.storage.local.remove(AUTH_KEY, () => res())
-  );
-
-// 获取云同步元数据
-export const getSyncMeta = () =>
-  new Promise((res) =>
-    chrome.storage.local.get(SYNC_META_KEY, (r) => res(r[SYNC_META_KEY] || {}))
-  );
-
-// 保存云同步元数据（合并更新）
-export const setSyncMeta = (obj) =>
-  new Promise((res) =>
-    chrome.storage.local.get(SYNC_META_KEY, (r) => {
-      const current = r[SYNC_META_KEY] || {};
-      chrome.storage.local.set({ [SYNC_META_KEY]: { ...current, ...obj } }, () => res());
     })
   );
 

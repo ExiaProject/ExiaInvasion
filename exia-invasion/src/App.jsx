@@ -22,7 +22,6 @@ import TRANSLATIONS from "./i18n/translations.js";
 import { initializeLevelStats } from "./services/levelStats.js";
 import { createLogFilename, formatLogText } from "./utils/logExport.js";
 import {
-  useAuth,
   useSettings,
   useNotification,
   useCrawler,
@@ -59,23 +58,6 @@ export default function App() {
   
   // 翻译函数
   const t = useCallback((k) => TRANSLATIONS[settings.lang][k] || k, [settings.lang]);
-
-  // ========== 认证 ==========
-  const showAuthMessage = useCallback((message, severity) => {
-    if (settings.showCloudSyncUi) {
-      showMessage(message, severity);
-    }
-  }, [settings.showCloudSyncUi, showMessage]);
-  const auth = useAuth({ t, showMessage: showAuthMessage });
-  const { handleMenuClose } = auth;
-
-  useEffect(() => {
-    if (!settings.showCloudSyncUi) {
-      handleMenuClose();
-    }
-  }, [settings.showCloudSyncUi, handleMenuClose]);
-
-  // ========== 云同步检查 ==========
 
   // ========== 自动更新检查 ==========
   const { updateAvailable, latestVersion, releaseUrl } = useUpdateCheck();
@@ -152,15 +134,6 @@ export default function App() {
     <>
       <AppHeader
         t={t}
-        authUsername={auth.authUsername}
-        authAvatarUrl={auth.authAvatarUrl}
-        authAnchorEl={auth.authAnchorEl}
-        menuOpen={auth.menuOpen}
-        handleAvatarClick={auth.handleAvatarClick}
-        handleMenuClose={auth.handleMenuClose}
-        handleLogoutClick={auth.handleLogoutClick}
-        openLoginDialog={auth.openLoginDialog}
-        showCloudSyncUi={settings.showCloudSyncUi}
         updateAvailable={updateAvailable}
         latestVersion={latestVersion}
         releaseUrl={releaseUrl}

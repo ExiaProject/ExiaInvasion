@@ -1,18 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // ========== App 工具函数 ==========
 
-import { API_BASE_URL } from "./constants.js";
-
-/**
- * 获取用户资料
- */
-export const fetchProfile = async (token) => {
-  const res = await fetch(`${API_BASE_URL}/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) return null;
-  return res.json();
-};
 
 /**
  * 从 Cookie 字符串中解析 game_uid

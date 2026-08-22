@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { memo } from "react";
 import {
   Box,
@@ -15,7 +15,6 @@ import {
   InputAdornment,
   IconButton,
   Tooltip,
-  CircularProgress,
 } from "@mui/material";
 import SaveIcon from "@mui/icons-material/Save";
 import EditIcon from "@mui/icons-material/Edit";
@@ -25,8 +24,6 @@ import AddIcon from "@mui/icons-material/Add";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import FileUploadIcon from "@mui/icons-material/FileUpload";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
-import CloudUploadIcon from "@mui/icons-material/CloudUpload";
-import CloudDownloadIcon from "@mui/icons-material/CloudDownload";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
@@ -72,33 +69,12 @@ const AccountTabContent = ({
   deleteRow,
   addRow,
   renderText,
-  showCloudSyncUi,
-  syncLabel,
-  isSyncing,
-  onUploadCloud,
-  onDownloadCloud,
-  syncAccountEmail,
-  syncAccountPassword,
-  toggleSyncAccountEmail,
-  toggleSyncAccountPassword,
   getCookieStatus,
 }) => (
   <>
     <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2, gap: 2 }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
         <Typography variant="h6">{t("accountTable")}</Typography>
-        {showCloudSyncUi && (isSyncing ? (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-            <CircularProgress size={14} />
-            <Typography variant="body2" color="text.secondary" noWrap>
-              {t("sync.inProgress") || "同步中"}
-            </Typography>
-          </Box>
-        ) : syncLabel ? (
-          <Typography variant="body2" color="text.secondary" noWrap>
-            {syncLabel}
-          </Typography>
-        ) : null)}
       </Box>
 
       <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -185,12 +161,12 @@ const AccountTabContent = ({
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title={t("copy") || "澶嶅埗"}>
-                        <IconButton size="small" aria-label={t("copy") || "澶嶅埗"} onClick={(event) => { event.stopPropagation(); handleDuplicateAccountTemplate(tpl.id); close(); }}>
+                      <Tooltip title={t("copy") || "复制"}>
+                        <IconButton size="small" aria-label={t("copy") || "复制"} onClick={(event) => { event.stopPropagation(); handleDuplicateAccountTemplate(tpl.id); close(); }}>
                           <ContentCopyIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title={tpl.id === defaultAccountTemplateId ? (t("accountTemplateDefaultLocked") || "榛樿璐﹀彿鍒楄〃涓嶅彲鍒犻櫎") : t("templateDelete")}>
+                      <Tooltip title={tpl.id === defaultAccountTemplateId ? (t("accountTemplateDefaultLocked") || "默认账号列表不可删除") : t("templateDelete")}>
                         <span>
                           <IconButton
                             size="small"
@@ -218,19 +194,8 @@ const AccountTabContent = ({
           onClick={handleCreateAccountTemplate}
           disabled={accountTemplates.length >= 200}
         >
-          {t("accountTemplateCreate") || "鏂板缓"}
+          {t("accountTemplateCreate") || "新建"}
         </Button>
-
-        {showCloudSyncUi && (
-          <>
-            <Button size="small" variant="outlined" startIcon={<CloudUploadIcon />} onClick={onUploadCloud} disabled={isSyncing} sx={{ minWidth: 96 }}>
-              {t("sync.upload") || "上传到云"}
-            </Button>
-            <Button size="small" variant="outlined" startIcon={<CloudDownloadIcon />} onClick={onDownloadCloud} disabled={isSyncing} sx={{ minWidth: 96 }}>
-              {t("sync.download") || "从云下载"}
-            </Button>
-          </>
-        )}
 
         <Button size="small" variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleImportAccounts} sx={{ minWidth: 80 }}>
           {t("importAccounts")}
@@ -265,40 +230,8 @@ const AccountTabContent = ({
             </Box>
           </TableCell>
           <TableCell width="15%">{t("username")}</TableCell>
-          <TableCell width="20%">
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>{t("email")}</Typography>
-              {showCloudSyncUi && (
-                <>
-                  <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-                  <Typography variant="caption" color="text.secondary">{t("sync.cloud") || "云同步"}</Typography>
-                  <Switch
-                    size="small"
-                    checked={Boolean(syncAccountEmail)}
-                    onChange={toggleSyncAccountEmail}
-                    inputProps={{ "aria-label": t("sync.cloud") || "云同步" }}
-                  />
-                </>
-              )}
-            </Box>
-          </TableCell>
-          <TableCell width="15%" sx={{ minWidth: 180 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>{t("password")}</Typography>
-              {showCloudSyncUi && (
-                <>
-                  <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-                  <Typography variant="caption" color="text.secondary">{t("sync.cloud") || "云同步"}</Typography>
-                  <Switch
-                    size="small"
-                    checked={Boolean(syncAccountPassword)}
-                    onChange={toggleSyncAccountPassword}
-                    inputProps={{ "aria-label": t("sync.cloud") || "云同步" }}
-                  />
-                </>
-              )}
-            </Box>
-          </TableCell>
+          <TableCell width="20%">{t("email")}</TableCell>
+          <TableCell width="15%" sx={{ minWidth: 180 }}>{t("password")}</TableCell>
           <TableCell width="20%">{t("cookie")}</TableCell>
           <TableCell align="right" width="10%"></TableCell>
         </TableRow>
@@ -475,4 +408,3 @@ const AccountTabContent = ({
 );
 
 export default memo(AccountTabContent);
-

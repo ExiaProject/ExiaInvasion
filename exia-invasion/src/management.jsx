@@ -12,18 +12,14 @@ import {
 } from "@mui/material";
 import TRANSLATIONS from "./i18n/translations.js";
 import { fetchAndCacheNikkeDirectory, getCachedNikkeDirectory } from "./services/api.js";
-import { getCharacters, getSettings, setSettings, setCharacters as persistCharacters } from "./services/storage.js";
-import { buildAccountsSignature } from "./utils/cloudCompare.js";
-import { isCloudSyncUiVisible } from "./utils/cloudSyncUi.js";
+import { getCharacters, getSettings, setSettings } from "./services/storage.js";
 import { getNikkeAvatarUrl as buildNikkeAvatarUrl } from "./utils/nikkeAvatar.js";
 import ManagementHeader from "./components/management/ManagementHeader.jsx";
 import AccountTabContent from "./components/management/AccountTabContent.jsx";
 import CharacterTabContent from "./components/management/CharacterTabContent.jsx";
 import SettingsTabContent from "./components/management/SettingsTabContent.jsx";
 import CharacterFilterDialog from "./components/management/CharacterFilterDialog.jsx";
-import SyncConflictDialog from "./components/management/SyncConflictDialog.jsx";
 import {
-  API_BASE_URL,
   defaultRow,
   equipStatKeys,
   basicStatKeys,
@@ -44,7 +40,6 @@ import {
   getPriorityColor,
   normalizeStoredAccounts,
 } from "./components/management/utils.js";
-import { useCloudSync } from "./components/management/hooks/useCloudSync.js";
 import { useAccountActions } from "./components/management/hooks/useAccountActions.js";
 import { useCharacterActions } from "./components/management/hooks/useCharacterActions.js";
 import { useTemplateManagement } from "./components/management/hooks/useTemplateManagement.js";
@@ -52,11 +47,8 @@ import { useTemplateManagement } from "./components/management/hooks/useTemplate
 // ========== 管理页面主组件 ==========
 
 const ManagementPage = () => {
-  /* ========== 语言设置同步 ========== */
+  /* ========== 语言与设置 ========== */
   const [lang, setLang] = useState("zh");
-  const [syncAccountEmail, setSyncAccountEmail] = useState(false);
-  const [syncAccountPassword, setSyncAccountPassword] = useState(false);
-  const [showCloudSyncUi, setShowCloudSyncUi] = useState(true);
   const [forceSimulatedStatsLevel400, setForceSimulatedStatsLevel400] = useState(false);
   const t = useCallback((k) => TRANSLATIONS[lang][k] || k, [lang]);
 
@@ -104,25 +96,6 @@ const ManagementPage = () => {
     showMessage,
     onAccountTemplateApplied: resetEditingState,
   });
-
-  const cloudSync = useCloudSync({
-    t,
-    syncAccountEmail,
-    syncAccountPassword,
-    accountTemplates: templateManagement.accountTemplates,
-    templates: templateManagement.templates,
-    selectedAccountTemplateId: templateManagement.selectedAccountTemplateId,
-    selectedTemplateId: templateManagement.selectedTemplateId,
-    setAccounts,
-    setCharactersData,
-    applyAccountTemplatesWithDefault: templateManagement.applyAccountTemplatesWithDefault,
-    applyTemplatesWithDefault: templateManagement.applyTemplatesWithDefault,
-    persist,
-    persistCharacters,
-    showMessage,
-    onAccountsOverridden: resetEditingState,
-  });
-  const { syncConflict, setSyncConflict } = cloudSync;
 
   const accountActions = useAccountActions({
     t,
@@ -237,27 +210,6 @@ const ManagementPage = () => {
 
   const renderText = useCallback((txt) => (txt ? txt : "—"), []);
 
-  const formatSyncAge = useCallback((timestampMs) => {
-    if (!timestampMs) return "";
-    const diff = Math.max(0, Date.now() - timestampMs);
-    if (diff < 60 * 60 * 1000) {
-      const minutes = Math.max(1, Math.floor(diff / (60 * 1000)));
-      return (t("sync.minutes") || "{count}分钟").replace("{count}", String(minutes));
-    }
-    if (diff < 24 * 60 * 60 * 1000) {
-      const hours = Math.max(1, Math.floor(diff / (60 * 60 * 1000)));
-      return (t("sync.hours") || "{count}小时").replace("{count}", String(hours));
-    }
-    const days = Math.max(1, Math.floor(diff / (24 * 60 * 60 * 1000)));
-    return (t("sync.days") || "{count}天").replace("{count}", String(days));
-  }, [t]);
-
-  const buildSyncLabel = useCallback((timestampMs) => {
-    if (!cloudSync.authToken || !timestampMs) return null;
-    const prefix = t("sync.status") || "已同步，最后更新时间：";
-    return `${prefix}${formatSyncAge(timestampMs)}`;
-  }, [cloudSync.authToken, formatSyncAge, t]);
-
   const formatCookieRemaining = useCallback((timestampMs) => {
     if (!timestampMs) return null;
     const expireAt = timestampMs + 30 * 24 * 60 * 60 * 1000;
@@ -292,12 +244,6 @@ const ManagementPage = () => {
     });
   }, []);
 
-  const toggleCloudSyncUi = useCallback(() => {
-    const next = !showCloudSyncUi;
-    setShowCloudSyncUi(next);
-    setSettings({ showCloudSyncUi: next });
-  }, [showCloudSyncUi]);
-
   const toggleForceSimulatedStatsLevel400 = useCallback((e) => {
     const next = e.target.checked;
     setForceSimulatedStatsLevel400(next);
@@ -320,65 +266,25 @@ const ManagementPage = () => {
     }
   }, []);
 
-  // 语言和同步设置初始化
+  // 语言和设置初始化
   useEffect(() => {
     chrome.storage.local.get("settings", (r) => {
       const nextSettings = r.settings || {};
       const nextLang = nextSettings.lang || "zh";
-      const legacySensitive = Boolean(nextSettings.syncAccountSensitive);
-      const nextEmail = nextSettings.syncAccountEmail ?? legacySensitive;
-      const nextPassword = nextSettings.syncAccountPassword ?? legacySensitive;
       setLang(nextLang);
-      setSyncAccountEmail(Boolean(nextEmail));
-      setSyncAccountPassword(Boolean(nextPassword));
-      setShowCloudSyncUi(isCloudSyncUiVisible(nextSettings));
       setForceSimulatedStatsLevel400(Boolean(nextSettings.forceSimulatedStatsLevel400));
     });
     const handler = (c, area) => {
       if (area === "local" && c.settings) {
         const nextSettings = c.settings.newValue || {};
         const nextLang = nextSettings.lang || "zh";
-        const legacySensitive = Boolean(nextSettings.syncAccountSensitive);
-        const nextEmail = nextSettings.syncAccountEmail ?? legacySensitive;
-        const nextPassword = nextSettings.syncAccountPassword ?? legacySensitive;
         setLang(nextLang);
-        setSyncAccountEmail(Boolean(nextEmail));
-        setSyncAccountPassword(Boolean(nextPassword));
-        setShowCloudSyncUi(isCloudSyncUiVisible(nextSettings));
         setForceSimulatedStatsLevel400(Boolean(nextSettings.forceSimulatedStatsLevel400));
       }
     };
     chrome.storage.onChanged.addListener(handler);
     return () => chrome.storage.onChanged.removeListener(handler);
   }, []);
-
-  useEffect(() => {
-    if (!showCloudSyncUi && syncConflict.open) {
-      setSyncConflict((prev) => ({ ...prev, open: false }));
-    }
-  }, [showCloudSyncUi, syncConflict.open, setSyncConflict]);
-
-  const persistSyncSettings = useCallback(async (nextEmail, nextPassword) => {
-    const current = await getSettings();
-    await setSettings({
-      ...current,
-      syncAccountEmail: Boolean(nextEmail),
-      syncAccountPassword: Boolean(nextPassword),
-      syncAccountSensitive: Boolean(nextEmail) || Boolean(nextPassword),
-    });
-  }, []);
-
-  const toggleSyncAccountEmail = useCallback((e) => {
-    const next = e.target.checked;
-    setSyncAccountEmail(next);
-    persistSyncSettings(next, syncAccountPassword);
-  }, [persistSyncSettings, syncAccountPassword]);
-
-  const toggleSyncAccountPassword = useCallback((e) => {
-    const next = e.target.checked;
-    setSyncAccountPassword(next);
-    persistSyncSettings(syncAccountEmail, next);
-  }, [persistSyncSettings, syncAccountEmail]);
 
   // 角色数据初始化
   useEffect(() => {
@@ -439,17 +345,10 @@ const ManagementPage = () => {
   useEffect(() => {
     const handler = (changes, area) => {
       if (area === "local" && changes.accounts) {
-        const prev = normalizeStoredAccounts(changes.accounts.oldValue);
         const next = normalizeStoredAccounts(changes.accounts.newValue);
         setAccounts(next);
-        // 注意：不调用 initEditingState，避免用户正在编辑时被重置
-
         if (templateManagement.selectedAccountTemplateId) {
-          const prevSig = buildAccountsSignature(cloudSync.sanitizeAccountsForCloud(prev));
-          const nextSig = buildAccountsSignature(cloudSync.sanitizeAccountsForCloud(next));
-          if (prevSig !== nextSig) {
-            templateManagement.syncAccountTemplateData(templateManagement.selectedAccountTemplateId, next);
-          }
+          templateManagement.syncAccountTemplateData(templateManagement.selectedAccountTemplateId, next);
         }
       }
     };
@@ -461,8 +360,6 @@ const ManagementPage = () => {
   // ========== 计算标签 ==========
   const selectionLabelTemplate = t("selectedCharactersLabel") || "Selected {count}";
   const selectionLabel = selectionLabelTemplate.replace("{count}", String(characterActions.totalSelectionCount));
-  const accountsSyncLabel = buildSyncLabel(cloudSync.accountsSyncAt);
-  const charactersSyncLabel = buildSyncLabel(cloudSync.charactersSyncAt);
 
   /* ---------- 渲染 ---------- */
   return (
@@ -472,8 +369,6 @@ const ManagementPage = () => {
         lang={lang}
         onToggleLang={toggleLang}
         t={t}
-        showCloudSyncUi={showCloudSyncUi}
-        onToggleCloudSyncUi={toggleCloudSyncUi}
       />
       
       <Container maxWidth="xl" sx={{ mt: 4, pb: 8 }}>
@@ -485,11 +380,6 @@ const ManagementPage = () => {
         {tab === 0 && (
           <AccountTabContent
             t={t}
-            showCloudSyncUi={showCloudSyncUi}
-            syncLabel={accountsSyncLabel}
-            isSyncing={cloudSync.accountsSyncing}
-            onUploadCloud={cloudSync.handleManualUploadAccounts}
-            onDownloadCloud={cloudSync.handleManualDownloadAccounts}
             accountTemplates={templateManagement.accountTemplates}
             defaultAccountTemplateId={templateManagement.defaultAccountTemplateId}
             selectedAccountTemplateId={templateManagement.selectedAccountTemplateId}
@@ -505,10 +395,6 @@ const ManagementPage = () => {
             handleDuplicateAccountTemplate={templateManagement.handleDuplicateAccountTemplate}
             handleDeleteAccountTemplate={templateManagement.handleDeleteAccountTemplate}
             handleCreateAccountTemplate={templateManagement.handleCreateAccountTemplate}
-            syncAccountEmail={syncAccountEmail}
-            syncAccountPassword={syncAccountPassword}
-            toggleSyncAccountEmail={toggleSyncAccountEmail}
-            toggleSyncAccountPassword={toggleSyncAccountPassword}
             isAllEnabled={isAllEnabled}
             handleToggleAllEnabled={() => accountActions.handleToggleAllEnabled(isAllEnabled)}
             handleImportAccounts={accountActions.handleImportAccounts}
@@ -537,11 +423,6 @@ const ManagementPage = () => {
           <CharacterTabContent
             t={t}
             lang={lang}
-            showCloudSyncUi={showCloudSyncUi}
-            syncLabel={charactersSyncLabel}
-            isSyncing={cloudSync.charactersSyncing}
-            onUploadCloud={cloudSync.handleManualUploadCharacters}
-            onDownloadCloud={cloudSync.handleManualDownloadCharacters}
             templates={templateManagement.templates}
             defaultTemplateId={templateManagement.defaultTemplateId}
             selectedTemplateId={templateManagement.selectedTemplateId}
@@ -622,18 +503,6 @@ const ManagementPage = () => {
         removedExistingIds={characterActions.removedExistingIds}
         handleConfirmSelection={characterActions.handleConfirmSelection}
       />
-
-      {showCloudSyncUi && (
-        <SyncConflictDialog
-          t={t}
-          open={cloudSync.syncConflict.open}
-          hasAccounts={cloudSync.syncConflict.hasAccounts}
-          hasCharacters={cloudSync.syncConflict.hasCharacters}
-          onUseLocal={cloudSync.handleConflictUseLocal}
-          onUseCloud={cloudSync.handleConflictUseCloud}
-          onLogout={cloudSync.handleConflictLogout}
-        />
-      )}
 
       <Snackbar
         open={snackbar.open}

@@ -13,7 +13,6 @@ import {
   FormControl,
   Tooltip,
   Checkbox,
-  CircularProgress,
   Select,
   MenuItem,
   IconButton,
@@ -26,8 +25,6 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import FileUploadIcon from "@mui/icons-material/FileUpload";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
-import CloudUploadIcon from "@mui/icons-material/CloudUpload";
-import CloudDownloadIcon from "@mui/icons-material/CloudDownload";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
@@ -151,11 +148,6 @@ const CharacterTabContent = ({
   onCharDragOver,
   onCharDrop,
   onCharDragEnd,
-  showCloudSyncUi,
-  syncLabel,
-  isSyncing,
-  onUploadCloud,
-  onDownloadCloud,
 }) => {
   const toggleMinWidth =
     typeof nikkeToggleMinWidthPx === "number" ? nikkeToggleMinWidthPx : 56;
@@ -260,18 +252,7 @@ const CharacterTabContent = ({
           sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}
         >
           <Typography variant="h6">{t("characterManagement")}</Typography>
-          {showCloudSyncUi && (isSyncing ? (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-              <CircularProgress size={14} />
-              <Typography variant="body2" color="text.secondary" noWrap>
-                {t("sync.inProgress") || "同步中"}
-              </Typography>
-            </Box>
-          ) : syncLabel ? (
-            <Typography variant="body2" color="text.secondary" noWrap>
-              {syncLabel}
-            </Typography>
-          ) : null)}
+          
         </Box>
 
         <Box
@@ -453,30 +434,7 @@ const CharacterTabContent = ({
             {t("templateCreate") || "鏂板缓"}
           </Button>
 
-          {showCloudSyncUi && (
-            <>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<CloudUploadIcon />}
-                onClick={onUploadCloud}
-                disabled={isSyncing}
-                sx={{ minWidth: 96 }}
-              >
-                {t("sync.upload") || "上传到云"}
-              </Button>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<CloudDownloadIcon />}
-                onClick={onDownloadCloud}
-                disabled={isSyncing}
-                sx={{ minWidth: 96 }}
-              >
-                {t("sync.download") || "从云下载"}
-              </Button>
-            </>
-          )}
+          
 
           <Button
             variant="outlined"

@@ -3,7 +3,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getSettings, setSettings, getCharacters, setCharacters } from "../../../services/storage.js";
-import { isCloudSyncUiVisible } from "../../../utils/cloudSyncUi.js";
 
 /**
  * 设置管理 Hook
@@ -16,7 +15,6 @@ export function useSettings() {
   const [server, setServer] = useState("global");
   const [sortFlag, setSortFlag] = useState("1");
   const [collapseEquipDetails, setCollapseEquipDetails] = useState(false);
-  const [showCloudSyncUi, setShowCloudSyncUi] = useState(true);
   const [forceSimulatedStatsLevel400, setForceSimulatedStatsLevel400] = useState(false);
 
   // 初始化设置加载
@@ -32,7 +30,6 @@ export function useSettings() {
       setActivateTab(Boolean(s.activateTab));
       setServer(s.server || "global");
       setSortFlag(s.sortFlag || "1");
-      setShowCloudSyncUi(isCloudSyncUiVisible(s));
       setForceSimulatedStatsLevel400(Boolean(s.forceSimulatedStatsLevel400));
 
       // 读取全局"折叠词条细节"开关
@@ -47,7 +44,6 @@ export function useSettings() {
         const nextSettings = changes.settings.newValue || {};
         const nextLang = nextSettings.lang;
         if (nextLang) setLang(nextLang);
-        setShowCloudSyncUi(isCloudSyncUiVisible(nextSettings));
         setForceSimulatedStatsLevel400(Boolean(nextSettings.forceSimulatedStatsLevel400));
         if ("syncAccountSensitive" in nextSettings) {
           // legacy flag ignored in UI
@@ -138,7 +134,6 @@ export function useSettings() {
     server,
     sortFlag,
     collapseEquipDetails,
-    showCloudSyncUi,
     forceSimulatedStatsLevel400,
 
     // 操作

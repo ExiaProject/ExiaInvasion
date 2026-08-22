@@ -53,33 +53,6 @@ export const normalizeTimestamp = (value) => {
 };
 
 /**
- * 格式化同步时间差
- */
-export const formatSyncAge = (timestampMs, t) => {
-  if (!timestampMs) return "";
-  const diff = Math.max(0, Date.now() - timestampMs);
-  if (diff < 60 * 60 * 1000) {
-    const minutes = Math.max(1, Math.floor(diff / (60 * 1000)));
-    return (t("sync.minutes") || "{count}分钟").replace("{count}", String(minutes));
-  }
-  if (diff < 24 * 60 * 60 * 1000) {
-    const hours = Math.max(1, Math.floor(diff / (60 * 60 * 1000)));
-    return (t("sync.hours") || "{count}小时").replace("{count}", String(hours));
-  }
-  const days = Math.max(1, Math.floor(diff / (24 * 60 * 60 * 1000)));
-  return (t("sync.days") || "{count}天").replace("{count}", String(days));
-};
-
-/**
- * 构建同步标签
- */
-export const buildSyncLabel = (timestampMs, authToken, t) => {
-  if (!authToken || !timestampMs) return null;
-  const prefix = t("sync.status") || "已同步，最后更新时间：";
-  return `${prefix}${formatSyncAge(timestampMs, t)}`;
-};
-
-/**
  * 获取元素名称
  */
 export const getElementName = (element, t) => {

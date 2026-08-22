@@ -42,18 +42,7 @@
   ],
   "host_permissions": [
     "*://*.blablalink.com/*",
-    "https://exia.nikke.cc/*",
-    "*://exia.nikke.cc/*",
-    "*://*.exia.nikke.cc/*",
     "https://raw.githubusercontent.com/*"
-  ],
-
-  "content_scripts": [
-    {
-      "matches": ["*://exia.nikke.cc/*", "*://*.exia.nikke.cc/*"],
-      "js": ["content-auth.js"],
-      "run_at": "document_idle"
-    }
   ],
 
   "background": {

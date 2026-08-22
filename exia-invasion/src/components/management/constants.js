@@ -7,8 +7,6 @@ import {
   SIMULATED_STATS_CONFIG_MARKER,
 } from "../../utils/showStats.js";
 
-export const API_BASE_URL = "https://backend.nikke-exia.com";
-
 // 默认账户行数据结构
 export const defaultRow = () => ({
   username: "",
