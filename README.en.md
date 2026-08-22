@@ -11,6 +11,18 @@
 
 **ExiaInvasion** is an open-source **browser extension** that retrieves Nikke character data from personal accounts on [blablalink](https://www.blablalink.com/) and generates progression tables.
 
+## Editions & Branch Strategy
+
+This project maintains a **dual-edition / dual-branch** model. Each GitHub Release provides two packages:
+
+| Edition | Branch | Release Asset | Description & Security |
+| :--- | :--- | :--- | :--- |
+| **Local Edition (Recommended)** | `main` | `ExiaInvasion.v*.zip` | **Default & secure**. Runs 100% locally with zero cloud upload logic. All account credentials, passwords, and cookies are stored strictly in the browser local storage (`chrome.storage.local`). |
+| **Cloud Edition** | `cloud` | `ExiaInvasion.v*-cloud.zip` | **Legacy / optional**. Retains cloud sync functionality for accounts and character templates with remote servers (`backend.nikke-exia.com`). Intended only for users requiring cross-device sync who accept third-party cloud risks. |
+
+> [!TIP]
+> Most users are strongly encouraged to download the default **Local Edition (`ExiaInvasion.v*.zip`)**.
+
 ## Example Output
 
 ![Example output](示例输出.png)
