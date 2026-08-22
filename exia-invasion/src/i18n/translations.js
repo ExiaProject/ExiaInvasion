@@ -30,7 +30,7 @@ const TRANSLATIONS = {
     hmt: "香港/澳门/台湾",
     global: "日本/韩国/北美/东南亚/全球",
     manualAreaId: "手动指定 area_id（仅本次会话）",
-    manualAreaIdHelp: "可留空，程序会自动获取。填写后将跳过自动区域和昵称探测，并对本批账号强制使用该值；重开侧栏后清空。仅建议出现area_id报错时手动指定。参考值：北美: 82; 国际服：84; 港澳台：91。 其它服务器自行查询之前成功的json文件底部",
+    manualAreaIdHelp: "可留空，程序会自动获取。填写后将跳过自动区域和昵称探测，并对本批账号强制使用该值；重开侧栏后清空。仅建议出现area_id报错时手动指定。参考值：日本：80；韩国：81；北美: 82；东南亚:83；国际服：84；港澳台：91。 ",
     manualAreaIdInvalid: "请输入大于 0 的整数 area_id。",
     langLabel: "中文",
     // Auth
@@ -307,8 +307,8 @@ const TRANSLATIONS = {
     hmt: "HK/MC/TW",
     global: "JP/KR/NA/SEA/Global",
     manualAreaId: "Force area_id (this session only)",
-    manualAreaIdHelp: "Skips automatic region and nickname lookup and forces this value for the batch. Cleared when the side panel is reopened.",
-    manualAreaIdInvalid: "Enter an integer area_id greater than 0.",
+    manualAreaIdHelp: "Optional. If provi ded, skips automatic region and nickname lookup for this batch and forces this area_id. The value is cleared when the side panel is reopened. Only recommended when area_id is missing from error messages. Reference values: Japan: 80; Korea: 81; NA: 82; SEA: 83; Global: 84; HK/MC/TW: 91. ",
+    manualAreaIdInvalid: "Please enter an integer area_id greater than 0.",
     langLabel: "EN",
     // Auth
     "auth.login": "Login",
