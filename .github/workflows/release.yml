@@ -22,6 +22,7 @@ jobs:
       - name: Check out tagged source
         uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Node.js
@@ -81,23 +82,26 @@ jobs:
           console.log(`Validated release version ${expected}.`);
           NODE
 
-      - name: Install dependencies
+      # ==========================================
+      # 1. Build and package Local edition (default)
+      # ==========================================
+      - name: Install dependencies (Local)
         working-directory: exia-invasion
         run: npm ci
 
-      - name: Lint
+      - name: Lint (Local)
         working-directory: exia-invasion
         run: npm run lint
 
-      - name: Test
+      - name: Test (Local)
         working-directory: exia-invasion
         run: node --test tests/*.test.mjs
 
-      - name: Build
+      - name: Build (Local)
         working-directory: exia-invasion
         run: npm run build
 
-      - name: Verify build output
+      - name: Verify build output (Local)
         working-directory: exia-invasion
         env:
           EXPECTED_VERSION: ${{ steps.version.outputs.version }}
@@ -112,7 +116,6 @@ jobs:
             "dist/index.html",
             "dist/management.html",
             "dist/background.js",
-            "dist/content-auth.js",
             "dist/cubes.json",
             "dist/LICENSE",
             "dist/images/icon-16.png",
@@ -136,10 +139,10 @@ jobs:
             process.exit(1);
           }
 
-          console.log(`Verified build output for version ${expected}.`);
+          console.log(`Verified local build output for version ${expected}.`);
           NODE
 
-      - name: Package extension
+      - name: Package Local extension
         id: package
         working-directory: exia-invasion
         env:
@@ -169,6 +172,84 @@ jobs:
           echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
           echo "Created $(basename "$ARCHIVE")."
 
+      # ==========================================
+      # 2. Build and package Cloud edition (legacy)
+      # ==========================================
+      - name: Build and package Cloud edition
+        id: package-cloud
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if ! git rev-parse --verify origin/cloud >/dev/null 2>&1; then
+            echo "Cloud branch 'origin/cloud' not found on remote; skipping cloud edition build."
+            exit 0
+          fi
+
+          echo "Checking out origin/cloud into worktree..."
+          git worktree add /tmp/exia-cloud origin/cloud
+          cd /tmp/exia-cloud/exia-invasion
+
+          npm ci
+          npm run lint
+          node --test tests/*.test.mjs
+          npm run build
+
+          # Verify cloud build output
+          node --input-type=module <<'NODE'
+          import { existsSync, readFileSync, readdirSync } from "node:fs";
+
+          const requiredFiles = [
+            "dist/manifest.json",
+            "dist/index.html",
+            "dist/management.html",
+            "dist/background.js",
+            "dist/content-auth.js",
+            "dist/cubes.json",
+            "dist/LICENSE",
+            "dist/images/icon-16.png",
+            "dist/images/icon-32.png",
+            "dist/images/icon-48.png",
+            "dist/images/icon-128.png",
+          ];
+          const missingFiles = requiredFiles.filter((path) => !existsSync(path));
+          const javascriptAssets = readdirSync("dist/assets").filter((name) => name.endsWith(".js"));
+
+          if (missingFiles.length > 0) {
+            console.error(`Cloud build output is missing: ${missingFiles.join(", ")}`);
+            process.exit(1);
+          }
+          if (javascriptAssets.length === 0) {
+            console.error("Cloud build output does not contain a JavaScript bundle.");
+            process.exit(1);
+          }
+
+          console.log("Verified cloud build output.");
+          NODE
+
+          # Package cloud edition
+          CLOUD_ARCHIVE="$RUNNER_TEMP/ExiaInvasion.${TAG_NAME}-cloud.zip"
+          (
+            cd dist
+            zip -r "$CLOUD_ARCHIVE" .
+          )
+
+          ARCHIVE_LISTING="$RUNNER_TEMP/archive-listing-cloud.txt"
+          unzip -Z1 "$CLOUD_ARCHIVE" > "$ARCHIVE_LISTING"
+
+          for REQUIRED_PATH in manifest.json index.html management.html background.js content-auth.js LICENSE; do
+            if ! grep -Fxq "$REQUIRED_PATH" "$ARCHIVE_LISTING"; then
+              echo "::error::The cloud release archive is missing '$REQUIRED_PATH'."
+              exit 1
+            fi
+          done
+
+          echo "cloud_archive=$CLOUD_ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "Created $(basename "$CLOUD_ARCHIVE")."
+
+      # ==========================================
+      # 3. Publish GitHub Release with Dual Builds
+      # ==========================================
       - name: Ensure release does not already exist
         env:
           GH_TOKEN: ${{ github.token }}
@@ -183,9 +264,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
-          ARCHIVE: ${{ steps.package.outputs.archive }}
+          LOCAL_ARCHIVE: ${{ steps.package.outputs.archive }}
+          CLOUD_ARCHIVE: ${{ steps.package-cloud.outputs.cloud_archive }}
         run: |
-          gh release create "$TAG_NAME" "$ARCHIVE" \
+          RELEASE_FILES=("$LOCAL_ARCHIVE")
+          if [[ -n "$CLOUD_ARCHIVE" && -f "$CLOUD_ARCHIVE" ]]; then
+            RELEASE_FILES+=("$CLOUD_ARCHIVE")
+          fi
+
+          gh release create "$TAG_NAME" "${RELEASE_FILES[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "$TAG_NAME" \
