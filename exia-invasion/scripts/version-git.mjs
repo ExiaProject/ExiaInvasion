@@ -88,11 +88,16 @@ if (tagExists) {
 }
 
 const toRepoPath = (path) => relative(repoRoot, path).split(sep).join("/");
-const expectedFiles = [
+const requiredVersionFiles = [
   toRepoPath(join(projectRoot, "package.json")),
   toRepoPath(join(projectRoot, "package-lock.json")),
   toRepoPath(join(projectRoot, "public", "manifest.json")),
-].sort();
+];
+const optionalReleaseFiles = [
+  toRepoPath(join(projectRoot, "public", "LICENSE")),
+];
+const allowedFiles = new Set([...requiredVersionFiles, ...optionalReleaseFiles]);
+
 const stagedFiles = runGit(["diff", "--cached", "--name-only"], {
   cwd: repoRoot,
 })
@@ -110,16 +115,20 @@ const untrackedFiles = runGit(["ls-files", "--others", "--exclude-standard"], {
   .split(/\r?\n/)
   .filter(Boolean);
 
+const hasDisallowedFiles = stagedFiles.some((path) => !allowedFiles.has(path));
+const hasMissingRequired = requiredVersionFiles.some((path) => !stagedFiles.includes(path));
+
 if (
-  stagedFiles.length !== expectedFiles.length ||
-  stagedFiles.some((path, index) => path !== expectedFiles[index]) ||
+  hasDisallowedFiles ||
+  hasMissingRequired ||
   unstagedFiles.length > 0 ||
   untrackedFiles.length > 0
 ) {
   throw new Error(
     [
       `Refusing to create ${tagName}; the release changes are not exactly the expected version files.`,
-      `Expected staged: ${expectedFiles.join(", ")}`,
+      `Required staged: ${requiredVersionFiles.join(", ")}`,
+      `Allowed staged: ${[...allowedFiles].join(", ")}`,
       `Actual staged: ${stagedFiles.join(", ") || "<none>"}`,
       `Unstaged: ${unstagedFiles.join(", ") || "<none>"}`,
       `Untracked: ${untrackedFiles.join(", ") || "<none>"}`,

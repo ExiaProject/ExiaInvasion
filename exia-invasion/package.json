@@ -1,7 +1,7 @@
 {
   "name": "exia-invasion",
   "private": true,
-  "version": "3.1.4",
+  "version": "3.2.0",
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/IsolateOB/ExiaInvasion",
   "repository": {
@@ -19,7 +19,8 @@
     "sync:level-stats": "node scripts/sync-level-stats.mjs",
     "preversion": "node scripts/version-git.mjs pre && npm run lint && npm test",
     "version": "node scripts/sync-version.mjs && node scripts/sync-license.mjs && git add package.json package-lock.json public/manifest.json public/LICENSE",
-    "postversion": "node scripts/version-git.mjs post"
+    "postversion": "node scripts/version-git.mjs post",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
