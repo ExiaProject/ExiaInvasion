@@ -664,6 +664,46 @@ export function useCrawler({
         addLog(
           `验证完成: ${authenticatedAccounts.length} 登录态有效 (${pendingAreaCount} 待回填 area_id), ${reloginAccounts.length} 待重登, ${unavailableAccounts.length} 无法处理`
         );
+
+        // 阶段1验证通过后，将新探测到的角色昵称（如新填账号或已改名账号）同步回写存储
+        if (AUTO_SAVE_DATA) {
+          const accountsToUpdate = authenticatedAccounts.filter((account) => {
+            const freshName = account.roleInfo?.role_name;
+            return Boolean(freshName && freshName !== account.username);
+          });
+
+          if (accountsToUpdate.length > 0) {
+            try {
+              const all = await getAccounts();
+              let hasChanges = false;
+              accountsToUpdate.forEach((account) => {
+                const freshName = account.roleInfo.role_name;
+                const existingIndex = all.findIndex(
+                  (a) =>
+                    (account.email && a.email === account.email) ||
+                    (account.game_uid && a.game_uid === account.game_uid) ||
+                    (account.cookie && a.cookie === account.cookie)
+                );
+                if (existingIndex !== -1 && all[existingIndex].username !== freshName) {
+                  all[existingIndex] = {
+                    ...all[existingIndex],
+                    username: freshName,
+                  };
+                  account.username = freshName;
+                  hasChanges = true;
+                }
+              });
+              if (hasChanges) {
+                await setAccounts(all);
+                addDiagnosticLog(
+                  `阶段1: 已同步更新 ${accountsToUpdate.length} 个账号的最新游戏昵称至存储`
+                );
+              }
+            } catch (error) {
+              addDiagnosticLog(`阶段1更新账号昵称异常: ${error?.message || error}`);
+            }
+          }
+        }
       } else {
         // 仅更新 Cookie：跳过验证，直接按启用开关强制重登更新
         accounts.forEach((acc) => {
@@ -731,28 +771,28 @@ export function useCrawler({
               );
             } else {
               const existingBatchAreaId = getSharedBatchAreaId(authenticatedAccounts);
-              if (existingBatchAreaId) {
-                roleInfo.area_id = existingBatchAreaId;
-                areaSource = "batch";
-                diagnosticLog("已取得 game_token，直接采用本批次已确认的 area_id");
-              } else {
-                await applyCookieStr(newCookieStr);
-                diagnosticLog("Cookie 重新应用完成；本批次尚无 area_id，尝试从当前账号发现");
-                try {
-                  const discoveredRoleInfo = await getRoleName(diagnosticLog);
-                  roleInfo = {
-                    role_name: discoveredRoleInfo.role_name || roleInfo.role_name,
-                    area_id: discoveredRoleInfo.area_id || "",
-                  };
-                  areaSource = roleInfo.area_id ? "account" : "pending";
-                  diagnosticLog(
-                    `玩家信息探测结果: area_id=${roleInfo.area_id ? "present" : "empty"}; role_name=${roleInfo.role_name ? "present" : "empty"}`
-                  );
-                } catch (error) {
-                  diagnosticLog(
-                    `玩家信息探测异常但不影响重登成功: ${error?.message || error}`
-                  );
-                }
+              await applyCookieStr(newCookieStr);
+              diagnosticLog("Cookie 重新应用完成；开始探测当前账号玩家信息与 area_id");
+              try {
+                const discoveredRoleInfo = await getRoleName(diagnosticLog);
+                const detectedRoleName = discoveredRoleInfo?.role_name || "";
+                const detectedAreaId = discoveredRoleInfo?.area_id || "";
+                const finalAreaId = detectedAreaId || existingBatchAreaId || "";
+
+                roleInfo = {
+                  role_name: detectedRoleName || roleInfo.role_name,
+                  area_id: finalAreaId,
+                };
+                areaSource = detectedAreaId ? "account" : (finalAreaId ? "batch" : "pending");
+                diagnosticLog(
+                  `玩家信息探测结果: detectedAreaId=${detectedAreaId || "empty"}; finalAreaId=${finalAreaId || "empty"} (source=${areaSource}); role_name=${detectedRoleName || "empty"}`
+                );
+              } catch (error) {
+                roleInfo.area_id = existingBatchAreaId || "";
+                areaSource = roleInfo.area_id ? "batch" : "pending";
+                diagnosticLog(
+                  `玩家信息探测异常但不影响重登成功: ${error?.message || error}; area_id 兜底采用 batch=${roleInfo.area_id || "none"}`
+                );
               }
             }
 
@@ -762,14 +802,14 @@ export function useCrawler({
               addLog(`✓ ${acc.username || acc.name || t("noName")} - Cookie 更新成功`);
             } else if (areaSource === "manual") {
               addLog(
-                `✓ ${acc.username || roleInfo.role_name || t("noName")} - 登录成功，已强制使用手动 area_id`
+                `✓ ${roleInfo.role_name || acc.username || acc.name || t("noName")} - 登录成功，已强制使用手动 area_id`
               );
             } else if (areaSource === "batch") {
-              addLog(`✓ ${acc.username || roleInfo.role_name || t("noName")} - 登录成功，已使用批次 area_id`);
+              addLog(`✓ ${roleInfo.role_name || acc.username || acc.name || t("noName")} - 登录成功，已使用批次 area_id`);
             } else if (roleInfo.area_id) {
-              addLog(`✓ ${acc.username || roleInfo.role_name || t("noName")} - 登录成功`);
+              addLog(`✓ ${roleInfo.role_name || acc.username || acc.name || t("noName")} - 登录成功`);
             } else {
-              addLog(`✓ ${acc.username || acc.name || t("noName")} - 登录成功，area_id 待批次回填`);
+              addLog(`✓ ${roleInfo.role_name || acc.username || acc.name || t("noName")} - 登录成功，area_id 待批次回填`);
             }
 
             // Cookie 获取成功后立即回写账号，不再依赖 area_id。
